@@ -96,3 +96,12 @@ Focused repair of 7 browser-test findings (no rebuild/redesign). User decisions:
 - **Issue 7 (readiness truthfulness)**: Dashboard shows "Simulation only — physical printing unavailable (REAL_FIERY_BACKEND = NOT_IMPLEMENTED)"; Production Engine MOCK/PRINT-locked safety preserved.
 - Tests: 83 passed + 2 skipped across 5 suites (new `test_repair_v04.py`, 10 tests). Frontend verified desktop + mobile. Testing agent: 100%/100%, no issues.
 - **Deployment**: fixes are in PREVIEW only. Production (myraana.com / build-saas-40.emergent.host) requires a redeploy to receive them.
+
+## V0.5 — File & Media Storage (2026-06)
+Integrated **Emergent Object Storage** (S3-compatible, no user keys — uses EMERGENT_LLM_KEY + INTEGRATION_PROXY_URL) for real artwork/media uploads on the Files & Artwork page.
+- Backend (`server.py`): storage helpers `init_storage/put_object/get_object` (session key, force-reinit on 404); `POST /api/files/upload` (multipart, optional order_ref → stores to `print2go/uploads/{uuid}.{ext}`, metadata in Mongo), `GET /api/files/{id}/download` (streams bytes with correct content-type), `DELETE /api/files/{id}` (soft-delete, `is_deleted`), `GET /api/files` filters soft-deleted. Startup inits storage (best-effort, logged). Supports PDF/images/AI/EPS/SVG/InDesign/video.
+- Frontend (`Files.jsx`): drag-and-drop + click-to-browse multi-upload, attach-to-order select, image thumbnails, download + delete actions, "DEMO" badge on legacy seed files (no storage_path). data-testids: file-dropzone, file-input, file-order-select, file-download-{id}, file-delete-{id}, file-row-{id}.
+- Verified end-to-end through the external ingress URL: upload → storage → list → download (bytes + content-type intact) → soft-delete. DB is source of truth; no base64 in Mongo.
+
+## Pending user decision (not yet built)
+- **AI model integration** (user asked for ChatGPT, then Claude, then Gemini). Proposed but unconfirmed: a single AI Assistant with a model switcher across OpenAI + Anthropic + Gemini via the Emergent LLM key. Awaiting the user's pick of feature location + default model.

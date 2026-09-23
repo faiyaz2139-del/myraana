@@ -1,11 +1,13 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Body
+from fastapi import FastAPI, APIRouter, HTTPException, Body, UploadFile, File, Form, Response
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import re
 import json
+import asyncio
 import logging
+import requests
 from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional, Any
@@ -19,6 +21,66 @@ load_dotenv(ROOT_DIR / '.env')
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
+
+# ---------------------- Object Storage (Emergent) ----------------------
+STORAGE_BASE = (os.environ.get("INTEGRATION_PROXY_URL") or "").strip() or "https://integrations.emergentagent.com"
+STORAGE_URL = STORAGE_BASE.rstrip("/") + "/objstore/api/v1/storage"
+EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")
+APP_NAME = "print2go"
+_storage_key = None
+
+MIME_TYPES = {
+    "jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "gif": "image/gif",
+    "webp": "image/webp", "tif": "image/tiff", "tiff": "image/tiff", "pdf": "application/pdf",
+    "ai": "application/postscript", "eps": "application/postscript", "svg": "image/svg+xml",
+    "indd": "application/octet-stream", "mp4": "video/mp4", "mov": "video/quicktime",
+    "json": "application/json", "csv": "text/csv", "txt": "text/plain",
+}
+FILE_TYPE_MAP = {
+    "pdf": "pdf", "png": "image", "jpg": "image", "jpeg": "image", "gif": "image",
+    "webp": "image", "tif": "image", "tiff": "image", "ai": "vector", "eps": "vector",
+    "svg": "vector", "indd": "indesign", "mp4": "video", "mov": "video",
+}
+
+
+def init_storage(force: bool = False):
+    global _storage_key
+    if _storage_key and not force:
+        return _storage_key
+    resp = requests.post(f"{STORAGE_URL}/init", json={"emergent_key": EMERGENT_KEY}, timeout=30)
+    resp.raise_for_status()
+    _storage_key = resp.json()["storage_key"]
+    return _storage_key
+
+
+def put_object(path: str, data: bytes, content_type: str) -> dict:
+    key = init_storage()
+    resp = requests.put(f"{STORAGE_URL}/objects/{path}",
+                        headers={"X-Storage-Key": key, "Content-Type": content_type}, data=data, timeout=120)
+    if resp.status_code == 404:
+        key = init_storage(force=True)
+        resp = requests.put(f"{STORAGE_URL}/objects/{path}",
+                            headers={"X-Storage-Key": key, "Content-Type": content_type}, data=data, timeout=120)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def get_object(path: str):
+    key = init_storage()
+    resp = requests.get(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key}, timeout=60)
+    if resp.status_code == 404:
+        key = init_storage(force=True)
+        resp = requests.get(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key}, timeout=60)
+    resp.raise_for_status()
+    return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
+
+
+def human_size(n: float) -> str:
+    for unit in ["B", "KB", "MB", "GB"]:
+        if n < 1024:
+            return f"{n:.1f} {unit}"
+        n /= 1024
+    return f"{n:.1f} TB"
 
 app = FastAPI(title="Print2Go Production OS")
 api_router = APIRouter(prefix="/api")
@@ -521,7 +583,58 @@ async def get_edge_agents():
 
 @api_router.get("/files")
 async def get_files():
-    return await db.files.find({}, {"_id": 0}).sort("uploaded_at", -1).to_list(1000)
+    return await db.files.find({"is_deleted": {"$ne": True}}, {"_id": 0}).sort("uploaded_at", -1).to_list(1000)
+
+
+@api_router.post("/files/upload")
+async def upload_file(file: UploadFile = File(...), order_ref: str = Form("")):
+    data = await file.read()
+    if len(data) == 0:
+        raise HTTPException(400, "Empty file")
+    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else "bin"
+    fid = new_id()
+    path = f"{APP_NAME}/uploads/{fid}.{ext}"
+    ctype = file.content_type or MIME_TYPES.get(ext, "application/octet-stream")
+    try:
+        result = await asyncio.to_thread(put_object, path, data, ctype)
+    except Exception as e:
+        logger.error(f"Storage upload failed: {e}")
+        raise HTTPException(502, "Storage upload failed")
+    size = result.get("size", len(data))
+    doc = {
+        "id": fid, "name": file.filename, "original_filename": file.filename,
+        "storage_path": result["path"], "content_type": ctype,
+        "type": FILE_TYPE_MAP.get(ext, "pdf"), "ext": ext,
+        "size_bytes": size, "size": human_size(size),
+        "order_ref": order_ref or "", "is_deleted": False, "uploaded_at": now_iso(),
+    }
+    await db.files.insert_one(doc)
+    await log_audit("Uploaded file", file.filename, "file")
+    doc.pop("_id", None)
+    return doc
+
+
+@api_router.get("/files/{file_id}/download")
+async def download_file(file_id: str):
+    rec = await db.files.find_one({"id": file_id, "is_deleted": {"$ne": True}}, {"_id": 0})
+    if not rec or not rec.get("storage_path"):
+        raise HTTPException(404, "File not available")
+    try:
+        content, ctype = await asyncio.to_thread(get_object, rec["storage_path"])
+    except Exception as e:
+        logger.error(f"Storage download failed: {e}")
+        raise HTTPException(502, "Storage download failed")
+    return Response(content=content, media_type=rec.get("content_type", ctype),
+                    headers={"Content-Disposition": f'inline; filename="{rec.get("name", "file")}"'})
+
+
+@api_router.delete("/files/{file_id}")
+async def delete_file(file_id: str):
+    rec = await db.files.find_one({"id": file_id}, {"_id": 0})
+    await db.files.update_one({"id": file_id}, {"$set": {"is_deleted": True}})
+    if rec:
+        await log_audit("Deleted file", rec.get("name", ""), "file")
+    return {"ok": True}
 
 
 @api_router.get("/sops")
@@ -837,6 +950,11 @@ async def startup():
     await seed()
     await seed_production(db)
     await migrate(db)
+    try:
+        await asyncio.to_thread(init_storage)
+        logger.info("Object storage initialized")
+    except Exception as e:
+        logger.error(f"Storage init failed: {e}")
 
 
 @app.on_event("shutdown")
