@@ -6,7 +6,7 @@ import { Radio, MapPin, WifiOff, ShieldAlert } from "lucide-react";
 
 export default function EdgeAgents() {
   const { data: agents = [], isLoading } = useCollection("edge-agents", "/edge-agents");
-  const { data: prod } = useQuery({ queryKey: ["prod-edge"], queryFn: async () => (await api.get("/production/edge/agents")).data });
+  const { data: prod } = useQuery({ queryKey: ["prod-edge-v2"], queryFn: async () => (await api.get("/production/edge-v2/agents")).data });
   const liveAgents = prod?.agents || [];
   return (
     <div>
@@ -28,12 +28,14 @@ export default function EdgeAgents() {
               <div className="flex items-center gap-3">
                 <WifiOff className="h-4 w-4 text-slate-400" />
                 <div>
-                  <p className="font-mono text-sm font-bold">{a.agent_id}</p>
-                  <p className="text-[11px] text-slate-400">{a.location_id} · caps: {(a.capabilities || []).join(", ") || "none"}</p>
+                  <p className="font-mono text-sm font-bold flex items-center gap-2">{a.agent_id}
+                    <span className={`text-[10px] font-bold rounded px-1.5 py-0.5 ${a.agent_kind === "REAL" ? "bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-400" : "bg-slate-100 dark:bg-slate-800 text-slate-500"}`}>{a.agent_kind}</span>
+                  </p>
+                  <p className="text-[11px] text-slate-400">{a.location_id} · v{a.version || "?"} · caps: {(a.capabilities || []).join(", ") || "none"}</p>
                 </div>
               </div>
-              <span className={`text-xs font-bold inline-flex items-center gap-1.5 ${a.live_state === "ONLINE" ? "text-emerald-600" : "text-slate-400"}`}>
-                <span className={`h-2 w-2 rounded-full ${a.live_state === "ONLINE" ? "bg-emerald-500 animate-pulse" : "bg-slate-300"}`} />{a.live_state}
+              <span className={`text-xs font-bold inline-flex items-center gap-1.5 ${a.live_state === "REAL_ONLINE" ? "text-emerald-600" : a.live_state === "SIMULATED_ONLINE" ? "text-amber-600" : "text-slate-400"}`}>
+                <span className={`h-2 w-2 rounded-full ${a.live_state === "REAL_ONLINE" ? "bg-emerald-500 animate-pulse" : a.live_state === "SIMULATED_ONLINE" ? "bg-amber-500" : "bg-slate-300"}`} />{a.live_state}
               </span>
             </div>
           ))}

@@ -1,0 +1,5 @@
+# Secrets and local state — never commit
+agent.key
+secrets.enc
+executed_actions.json
+config.json

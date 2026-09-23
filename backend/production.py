@@ -11,15 +11,17 @@ Artifact bytes are stored in MongoDB (small internal PDFs) — no pod-local file
 import os
 import io
 import json
+import hmac
+import time
 import hashlib
 import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, UploadFile, File, Body, Query
+from fastapi import APIRouter, HTTPException, UploadFile, File, Body, Query, Request, Header
 from pydantic import BaseModel
 from pypdf import PdfReader, PdfWriter
-from pypdf.generic import RectangleObject
+from pypdf.generic import RectangleObject, ContentStream, NameObject, DecodedStreamObject
 
 # ----------------------------------------------------------------------------
 # Constants & configuration
@@ -67,9 +69,22 @@ STOP_CODES = {
     "WRONG_DIMENSIONS", "WRONG_ASPECT_RATIO", "MISSING_BACK", "UNSAFE_SAFE_AREA",
     "BLEED_UNVERIFIED", "PROTECTED_CONTENT_REVIEW", "PDF_EXPORT_FAILED",
     "PRINT_READY_VERIFICATION_FAILED", "DEVICE_OFFLINE", "FIERY_UNAVAILABLE",
-    "TEMPLATE_NOT_FOUND", "JOB_AMBIGUOUS", "CONFIGURATION_REQUIRED",
+    "TEMPLATE_NOT_FOUND", "JOB_AMBIGUOUS", "CONFIGURATION_REQUIRED", "SAFE_AREA_REVIEW_REQUIRED",
 }
 POLICY_DECISIONS = {"ALLOW", "DENY", "HUMAN_APPROVAL_REQUIRED", "CONFIGURATION_REQUIRED"}
+
+# Edge action allowlist (V0.3: safe / read-only only)
+ACTION_ALLOWLIST = {
+    "PING", "GET_AGENT_STATUS", "DISCOVER_CAPABILITIES", "CHECK_DEVICE_REACHABILITY",
+    "GET_ADAPTER_STATUS", "READ_CONFIGURATION",
+}
+PROHIBITED_ACTIONS = {
+    "PRINT", "RELEASE", "DELETE_JOB", "CANCEL_JOB", "CHANGE_QUANTITY", "CHANGE_MEDIA",
+    "CHANGE_COLOR_SETTINGS", "EDIT_TEMPLATE", "MODIFY_EXISTING_JOB",
+}
+SAFE_AREA_MARGIN_IN = 0.125
+EDGE_SIG_WINDOW_S = 300
+IP_REDACT = "[REDACTED]"
 
 
 def now_iso():
@@ -217,6 +232,119 @@ def copy_pdf_bytes(src: bytes) -> bytes:
     return buf.getvalue()
 
 
+def make_pdf_content_bytes(w_in, h_in, with_bleed, content_rect_in) -> bytes:
+    """Single-page PDF with a filled vector rectangle (content) at content_rect_in=(x,y,w,h) inches."""
+    writer = PdfWriter()
+    page = writer.add_blank_page(width=w_in * IN, height=h_in * IN)
+    if with_bleed:
+        inset = BLEED * IN
+        page.trimbox = RectangleObject([inset, inset, w_in * IN - inset, h_in * IN - inset])
+        page.bleedbox = RectangleObject([0, 0, w_in * IN, h_in * IN])
+    else:
+        page.trimbox = RectangleObject([0, 0, w_in * IN, h_in * IN])
+    x, y, w, h = [v * IN for v in content_rect_in]
+    stream = DecodedStreamObject()
+    stream.set_data(f"0.2 0.4 0.8 rg {x:.2f} {y:.2f} {w:.2f} {h:.2f} re f".encode())
+    ref = writer._add_object(stream)
+    page[NameObject("/Contents")] = ref
+    buf = io.BytesIO()
+    writer.write(buf)
+    return buf.getvalue()
+
+
+def analyze_safe_area(pdf_bytes: bytes, margin_in: float, unknown: bool = False) -> dict:
+    """Deterministic content-margin analysis. Full-bleed backgrounds are ignored.
+    Returns status PASS | UNSAFE | REVIEW_REQUIRED with nearest content distance and evidence."""
+    if unknown:
+        return {"status": "REVIEW_REQUIRED", "nearest_in": None, "evidence": {"reason": "artwork_type_not_deterministic"}}
+    try:
+        reader = PdfReader(io.BytesIO(pdf_bytes))
+        page = reader.pages[0]
+        tb = page.trimbox
+        tx0, ty0, tx1, ty1 = float(tb.left), float(tb.bottom), float(tb.right), float(tb.top)
+        mediaW, mediaH = float(page.mediabox.width), float(page.mediabox.height)
+        contents = page.get_contents()
+        if contents is None:
+            # No drawable content — nothing can violate the safe area
+            return {"status": "PASS", "nearest_in": None, "evidence": {"content": "none"}}
+        cs = ContentStream(contents, reader)
+    except Exception as e:
+        return {"status": "REVIEW_REQUIRED", "nearest_in": None, "evidence": {"reason": "content_undecodable", "error": str(e)[:80]}}
+
+    boxes = []
+    ctm = [1.0, 0, 0, 1.0, 0, 0]
+    stack = []
+
+    def apply(cm, x, y):
+        a, b, c, d, e, f = cm
+        return (a * x + c * y + e, b * x + d * y + f)
+
+    def mul(m1, m2):
+        a1, b1, c1, d1, e1, f1 = m1
+        a2, b2, c2, d2, e2, f2 = m2
+        return [a1 * a2 + b1 * c2, a1 * b2 + b1 * d2, c1 * a2 + d1 * c2,
+                c1 * b2 + d1 * d2, e1 * a2 + f1 * c2 + e2, e1 * b2 + f1 * d2 + f2]
+
+    for operands, op in cs.operations:
+        o = op.decode() if isinstance(op, bytes) else op
+        if o == "q":
+            stack.append(list(ctm))
+        elif o == "Q":
+            ctm = stack.pop() if stack else ctm
+        elif o == "cm":
+            try:
+                m = [float(x) for x in operands]
+                ctm = mul(m, ctm)
+            except Exception:
+                pass
+        elif o == "re":
+            try:
+                x, y, w, h = [float(v) for v in operands]
+                pts = [apply(ctm, x, y), apply(ctm, x + w, y + h)]
+                xs = [p[0] for p in pts]; ys = [p[1] for p in pts]
+                boxes.append((min(xs), min(ys), max(xs), max(ys)))
+            except Exception:
+                pass
+
+    def is_full_bleed(b):
+        return (b[0] <= 0.02 * mediaW and b[1] <= 0.02 * mediaH
+                and b[2] >= 0.98 * mediaW and b[3] >= 0.98 * mediaH)
+
+    fg = [b for b in boxes if not is_full_bleed(b)]
+    if not fg:
+        return {"status": "PASS", "nearest_in": None, "evidence": {"content": "background_only_or_none"}}
+
+    X0 = min(b[0] for b in fg); Y0 = min(b[1] for b in fg)
+    X1 = max(b[2] for b in fg); Y1 = max(b[3] for b in fg)
+    m = margin_in * IN
+    inside = (X0 >= tx0 + m - 0.5 and Y0 >= ty0 + m - 0.5 and X1 <= tx1 - m + 0.5 and Y1 <= ty1 - m + 0.5)
+    nearest = min(X0 - tx0, Y0 - ty0, tx1 - X1, ty1 - Y1) / IN
+    return {"status": "PASS" if inside else "UNSAFE", "nearest_in": round(nearest, 3),
+            "evidence": {"content_bbox_in": [round(X0 / IN, 3), round(Y0 / IN, 3), round(X1 / IN, 3), round(Y1 / IN, 3)],
+                         "trim_in": [round(tx0 / IN, 3), round(ty0 / IN, 3), round(tx1 / IN, 3), round(ty1 / IN, 3)],
+                         "margin_in": margin_in}}
+
+
+# ---- Edge request signing (HMAC-SHA256) ----
+def sign_request(secret: str, method: str, path: str, ts: str, body: bytes) -> str:
+    body_hash = hashlib.sha256(body or b"").hexdigest()
+    msg = f"{method}\n{path}\n{ts}\n{body_hash}".encode()
+    return hmac.new(secret.encode(), msg, hashlib.sha256).hexdigest()
+
+
+def redact_ips(obj):
+    """Recursively redact IPv4 host values so machine addresses never reach cloud/AI logs."""
+    import re
+    ipre = re.compile(r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b")
+    if isinstance(obj, dict):
+        return {k: (IP_REDACT if k.lower() in ("host", "ip", "fiery_host", "address") else redact_ips(v)) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [redact_ips(v) for v in obj]
+    if isinstance(obj, str):
+        return ipre.sub(IP_REDACT, obj)
+    return obj
+
+
 # ----------------------------------------------------------------------------
 # Models
 # ----------------------------------------------------------------------------
@@ -230,6 +358,7 @@ class CreateJobRequest(BaseModel):
     sides: int = 1
     safe_area_ok: bool = True
     protected_content_review: bool = False
+    safe_area_unknown: bool = False
 
 
 class AdvanceOptions(BaseModel):
@@ -350,13 +479,23 @@ class ProductionEngine:
                 await self.set_stop(job, "MISSING_BACK", "Double-sided card requires a back page", actor)
                 return {"job": await self.get(job["id"]), "policy": decision, "measure": m}
             if not job.get("safe_area_ok", True):
-                await self.set_stop(job, "UNSAFE_SAFE_AREA", "Content inside safe-area margin", actor)
+                await self.set_stop(job, "UNSAFE_SAFE_AREA", "Content inside safe-area margin (manual flag)", actor)
                 return {"job": await self.get(job["id"]), "policy": decision, "measure": m}
             if job.get("protected_content_review"):
                 await self.set_stop(job, "PROTECTED_CONTENT_REVIEW", "Protected customer content requires human review", actor)
                 return {"job": await self.get(job["id"]), "policy": decision, "measure": m}
-            await self.db.prod_jobs.update_one({"id": job["id"]}, {"$set": {"detected_kind": kind, "orientation": orient, "preflight": m}})
-            result_evidence = {"measure": m, "kind": kind, "orientation": orient}
+            # Deterministic safe-area analysis (margin from approved recipe)
+            recipe = await self.db.recipes.find_one({"recipe_id": job["recipe_id"]}, {"_id": 0})
+            margin = (recipe or {}).get("parameters", {}).get("safe_area_margin_in", SAFE_AREA_MARGIN_IN)
+            sa = analyze_safe_area(orig["data"], margin, unknown=job.get("safe_area_unknown", False))
+            if sa["status"] == "UNSAFE":
+                await self.set_stop(job, "UNSAFE_SAFE_AREA", f"Content {sa['nearest_in']}in from trim (< {margin}in safe margin)", actor)
+                return {"job": await self.get(job["id"]), "policy": decision, "measure": m, "safe_area": sa}
+            if sa["status"] == "REVIEW_REQUIRED":
+                await self.set_stop(job, "SAFE_AREA_REVIEW_REQUIRED", "Safe area could not be determined deterministically — human review required", actor)
+                return {"job": await self.get(job["id"]), "policy": decision, "measure": m, "safe_area": sa}
+            await self.db.prod_jobs.update_one({"id": job["id"]}, {"$set": {"detected_kind": kind, "orientation": orient, "preflight": m, "safe_area": sa}})
+            result_evidence = {"measure": m, "kind": kind, "orientation": orient, "safe_area": sa}
 
         elif state == "BLEED_DECISION":
             kind = job.get("detected_kind")
@@ -486,6 +625,8 @@ def build_router(db):
                 "workflow": WORKFLOW, "stop_codes": sorted(STOP_CODES), "policy_decisions": sorted(POLICY_DECISIONS),
                 "REAL_FIERY_BACKEND": REAL_FIERY_BACKEND,
                 "fiery_mode_available": "MOCK" if (FIERY_ALLOW_MOCK and DEPLOY_ENV != "production") else "NONE",
+                "action_allowlist": sorted(ACTION_ALLOWLIST), "prohibited_actions": sorted(PROHIBITED_ACTIONS),
+                "agent_kinds": ["REAL", "MOCK"], "device_roles": ["FIERY_PRIMARY"],
                 "deploy_env": DEPLOY_ENV}
 
     @router.get("/fiery-status")
@@ -516,6 +657,7 @@ def build_router(db):
             "product_code": req.product_code, "recipe_id": req.recipe_id, "recipe_version": recipe["version"],
             "recipe_snapshot": recipe, "customer": req.customer, "orientation": req.orientation, "sides": req.sides,
             "safe_area_ok": req.safe_area_ok, "protected_content_review": req.protected_content_review,
+            "safe_area_unknown": req.safe_area_unknown,
             "state": "ORDER_RECEIVED", "status": "RUNNING", "stop": None,
             "created_at": now_iso(), "updated_at": now_iso(),
         }
@@ -573,10 +715,17 @@ def build_router(db):
             "wrong_dimensions": (7.0, 4.0, 1, False),
             "wrong_aspect": (3.5, 3.0, 1, False),
         }
-        if variant not in specs:
-            raise HTTPException(400, f"Unknown variant. Options: {list(specs)}")
-        w, h, pages, bleed = specs[variant]
-        data = make_pdf_bytes(w, h, pages, bleed)
+        if variant not in specs and variant not in ("safe_content", "unsafe_content"):
+            raise HTTPException(400, f"Unknown variant. Options: {list(specs)} + safe_content, unsafe_content")
+        if variant in ("safe_content", "unsafe_content"):
+            # bleed landscape page (3.75x2.25) with a filled rect; trim = 3.5x2 inset 0.125
+            if variant == "safe_content":
+                data = make_pdf_content_bytes(3.75, 2.25, True, (0.9, 0.9, 1.95, 0.45))  # well inside trim
+            else:
+                data = make_pdf_content_bytes(3.75, 2.25, True, (0.18, 0.18, 3.39, 0.25))  # touches into safe margin near trim edge
+        else:
+            w, h, pages, bleed = specs[variant]
+            data = make_pdf_bytes(w, h, pages, bleed)
         meta = measure_pdf_bytes(data)
         rec = await engine.add_file(j, "ORIGINAL", data, "dev-generator", metadata=meta, filename=f"dev_{variant}.pdf")
         if j["state"] == "ORDER_RECEIVED":
@@ -684,6 +833,174 @@ def build_router(db):
             prev = e["entry_hash"]
         return {"entries": entries, "chain_valid": ok, "count": len(entries)}
 
+    # ========================================================================
+    # V0.3 — SECURE EDGE PROTOCOL (real agent, HMAC-signed, read-only allowlist)
+    # ========================================================================
+    async def edge_audit(agent_id, action, decision, evidence=None, actor="edge"):
+        last = await db.prod_edge_audit.find_one({"agent_id": agent_id}, sort=[("seq", -1)])
+        seq = (last["seq"] + 1) if last else 1
+        prev_hash = last["entry_hash"] if last else "GENESIS"
+        entry = {"id": new_id("EAUD-"), "seq": seq, "prev_hash": prev_hash, "agent_id": agent_id,
+                 "action": action, "decision": decision, "actor": actor,
+                 "evidence": redact_ips(evidence or {}), "timestamp": now_iso()}
+        entry["entry_hash"] = sha256_bytes(json.dumps(
+            {k: entry[k] for k in ["seq", "prev_hash", "agent_id", "action", "decision", "timestamp"]},
+            sort_keys=True, default=str).encode())
+        await db.prod_edge_audit.insert_one(entry)
+        return entry
+
+    async def authenticate_agent(request: Request):
+        """Validate HMAC signature, timestamp window, token expiry, tenant/location. Returns agent doc."""
+        agent_id = request.headers.get("X-P2G-Agent")
+        ts = request.headers.get("X-P2G-Timestamp")
+        sig = request.headers.get("X-P2G-Signature")
+        if not (agent_id and ts and sig):
+            raise HTTPException(401, "Missing agent auth headers")
+        agent = await db.prod_edge_agents.find_one({"agent_id": agent_id})
+        if not agent or not agent.get("signing_secret"):
+            raise HTTPException(401, "Unknown or unregistered agent")
+        if agent.get("token_expires_at") and agent["token_expires_at"] < now_iso():
+            raise HTTPException(401, "Registration expired — re-register required")
+        try:
+            if abs(time.time() - float(ts)) > EDGE_SIG_WINDOW_S:
+                raise HTTPException(401, "Stale request timestamp")
+        except (ValueError, TypeError):
+            raise HTTPException(401, "Bad timestamp")
+        body = await request.body()
+        path = request.url.path
+        expected = sign_request(agent["signing_secret"], request.method, path, ts, body)
+        if not hmac.compare_digest(expected, sig):
+            raise HTTPException(401, "Invalid request signature")
+        return agent
+
+    @router.post("/edge-v2/register")
+    async def edge_v2_register(payload: dict = Body(...)):
+        agent_id = payload.get("agent_id") or new_id("EDGE-")
+        tenant_id = payload.get("tenant_id", "TEN-PRINT2GO")
+        location_id = payload.get("location_id", "LOC-LONDON")
+        if tenant_id != TENANT["id"]:
+            raise HTTPException(400, "Unknown tenant")
+        if location_id != LOCATION_LONDON["id"]:
+            raise HTTPException(400, "Unknown location")
+        agent_kind = payload.get("agent_kind", "REAL")
+        signing_secret = new_id("sec-") + uuid.uuid4().hex
+        token = new_id("tok-") + uuid.uuid4().hex
+        expiry = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
+        doc = {"id": new_id("EA-"), "agent_id": agent_id, "tenant_id": tenant_id, "location_id": location_id,
+               "agent_kind": agent_kind, "state": "REGISTERING", "token": token, "signing_secret": signing_secret,
+               "token_expires_at": expiry, "version": payload.get("version", "0.0.0"),
+               "capabilities": payload.get("capabilities", []), "last_heartbeat": None,
+               "authenticated_real": False, "real_online": False, "registered_at": now_iso()}
+        await db.prod_edge_agents.update_one({"agent_id": agent_id}, {"$set": doc}, upsert=True)
+        await edge_audit(agent_id, "REGISTER", "ALLOW", {"agent_kind": agent_kind, "version": doc["version"]})
+        # secret returned ONCE — never persisted to logs, never sent to AI-facing surfaces
+        return {"agent_id": agent_id, "token": token, "signing_secret": signing_secret,
+                "token_expires_at": expiry, "tenant_id": tenant_id, "location_id": location_id,
+                "device_roles": {"FIERY_PRIMARY": "resolve-locally"},
+                "note": "Store signing_secret in local encrypted storage. Sign every request. TLS required."}
+
+    @router.post("/edge-v2/heartbeat")
+    async def edge_v2_heartbeat(request: Request):
+        agent = await authenticate_agent(request)  # only a REAL authenticated agent can beat
+        real = agent.get("agent_kind") == "REAL"
+        await db.prod_edge_agents.update_one({"agent_id": agent["agent_id"]}, {"$set": {
+            "last_heartbeat": now_iso(), "state": "ONLINE",
+            "authenticated_real": True, "real_online": real}})
+        return {"agent_id": agent["agent_id"], "state": "ONLINE", "real_online": real, "ack": now_iso()}
+
+    @router.post("/edge-v2/agents/{agent_id}/enqueue")
+    async def edge_v2_enqueue(agent_id: str, payload: dict = Body(...)):
+        action = (payload.get("action") or "").upper()
+        agent = await db.prod_edge_agents.find_one({"agent_id": agent_id})
+        if not agent:
+            raise HTTPException(404, "Agent not registered")
+        if action in PROHIBITED_ACTIONS:
+            await edge_audit(agent_id, action, "DENY", {"reason": "PROHIBITED_ACTION"})
+            raise HTTPException(403, f"Prohibited action rejected: {action}")
+        if action not in ACTION_ALLOWLIST:
+            await edge_audit(agent_id, action, "DENY", {"reason": "NOT_ALLOWLISTED"})
+            raise HTTPException(400, f"Action not in allowlist: {action}")
+        ikey = payload.get("idempotency_key") or new_id("idem-")
+        existing = await db.prod_edge_actions.find_one({"agent_id": agent_id, "idempotency_key": ikey}, {"_id": 0})
+        if existing:
+            return {"idempotent": True, "action": existing}
+        act = {"id": new_id("ACT-"), "agent_id": agent_id, "action": action,
+               "params": redact_ips(payload.get("params", {})), "device_role": payload.get("device_role", "FIERY_PRIMARY"),
+               "idempotency_key": ikey, "status": "QUEUED", "created_at": now_iso()}
+        await db.prod_edge_actions.insert_one(dict(act))
+        await edge_audit(agent_id, action, "ALLOW", {"action_id": act["id"], "idempotency_key": ikey})
+        return {"queued": True, "action": {k: act[k] for k in act if k != "_id"}}
+
+    @router.get("/edge-v2/actions")
+    async def edge_v2_poll(request: Request):
+        agent = await authenticate_agent(request)
+        acts = await db.prod_edge_actions.find({"agent_id": agent["agent_id"], "status": "QUEUED"}, {"_id": 0}).to_list(50)
+        for a in acts:
+            await db.prod_edge_actions.update_one({"id": a["id"]}, {"$set": {"status": "DISPATCHED", "dispatched_at": now_iso()}})
+        return {"actions": acts}
+
+    @router.post("/edge-v2/actions/{action_id}/ack")
+    async def edge_v2_ack(action_id: str, request: Request):
+        await authenticate_agent(request)
+        await db.prod_edge_actions.update_one({"id": action_id}, {"$set": {"status": "ACKNOWLEDGED", "ack_at": now_iso()}})
+        return {"ok": True}
+
+    @router.post("/edge-v2/actions/{action_id}/result")
+    async def edge_v2_result(action_id: str, request: Request):
+        agent = await authenticate_agent(request)
+        body = await request.body()
+        payload = json.loads(body or b"{}")
+        act = await db.prod_edge_actions.find_one({"id": action_id}, {"_id": 0})
+        if not act:
+            raise HTTPException(404, "Action not found")
+        status = "SUCCEEDED" if payload.get("ok") else "FAILED"
+        safe_result = redact_ips(payload.get("result", {}))
+        safe_evidence = redact_ips(payload.get("evidence", {}))
+        await db.prod_edge_actions.update_one({"id": action_id}, {"$set": {
+            "status": status, "result": safe_result, "evidence": safe_evidence, "result_at": now_iso()}})
+        await edge_audit(agent["agent_id"], f"{act['action']}_RESULT", "ALLOW",
+                         {"action_id": action_id, "status": status, "result": safe_result})
+        return {"ok": True, "status": status}
+
+    def _v2_live(a):
+        hb = a.get("last_heartbeat")
+        recent = False
+        if hb:
+            try:
+                recent = datetime.now(timezone.utc) - datetime.fromisoformat(hb) <= timedelta(seconds=EDGE_HEARTBEAT_TIMEOUT_S)
+            except Exception:
+                recent = False
+        real_online = bool(a.get("real_online") and a.get("agent_kind") == "REAL" and recent)
+        return "REAL_ONLINE" if real_online else ("SIMULATED_ONLINE" if (recent and not real_online) else "OFFLINE"), real_online
+
+    @router.get("/edge-v2/agents")
+    async def edge_v2_agents():
+        agents = await db.prod_edge_agents.find({}, {"_id": 0, "token": 0, "signing_secret": 0}).to_list(100)
+        for a in agents:
+            live, real_online = _v2_live(a)
+            a["live_state"] = live
+            a["real_online"] = real_online
+            a["agent_kind"] = a.get("agent_kind", "MOCK")
+        return {"agents": agents,
+                "note": "REAL_ONLINE requires a REAL agent_kind with a valid HMAC-authenticated heartbeat within the window. A simulated/mock heartbeat can never be REAL_ONLINE."}
+
+    @router.get("/edge-v2/audit/{agent_id}")
+    async def edge_v2_audit(agent_id: str):
+        entries = await db.prod_edge_audit.find({"agent_id": agent_id}, {"_id": 0}).sort("seq", 1).to_list(500)
+        ok = True; prev = "GENESIS"
+        for e in entries:
+            if e["prev_hash"] != prev:
+                ok = False
+            prev = e["entry_hash"]
+        return {"entries": entries, "chain_valid": ok, "count": len(entries)}
+
+    @router.get("/edge-v2/actions/{action_id}")
+    async def edge_v2_get_action(action_id: str):
+        a = await db.prod_edge_actions.find_one({"id": action_id}, {"_id": 0})
+        if not a:
+            raise HTTPException(404, "Action not found")
+        return a
+
     return router
 
 
@@ -713,6 +1030,7 @@ async def seed_production(db):
                       "Imposition (London BC)", "Await production authorization"],
             "parameters": {"trim": {"landscape": [3.5, 2.0], "portrait": [2.0, 3.5]}, "bleed_in": BLEED,
                            "file_with_bleed": {"landscape": [3.75, 2.25], "portrait": [2.25, 3.75]},
+                           "safe_area_margin_in": SAFE_AREA_MARGIN_IN,
                            "automation_level": "SEMI_AUTO_HUMAN_PRINT_GATE"},
             "provenance": {"origin": "human_authored"}, "extraction_model": "", "source": "manual", "created_at": now_iso(),
         })

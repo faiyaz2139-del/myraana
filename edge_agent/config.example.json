@@ -1,0 +1,14 @@
+{
+  "agent_id": "P2G-LONDON-EDGE-01",
+  "tenant_id": "TEN-PRINT2GO",
+  "location_id": "LOC-LONDON",
+  "version": "0.3.0",
+  "cloud_url": "https://your-print2go-cloud.example.com",
+  "heartbeat_seconds": 10,
+  "poll_seconds": 5,
+  "fiery": {
+    "server": "PX300",
+    "host": "192.168.0.200",
+    "imposition_template": "London BC"
+  }
+}
