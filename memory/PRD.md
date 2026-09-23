@@ -84,3 +84,15 @@ Added a real production orchestration engine (`/app/backend/production.py`) alon
 - Sample reports at repo root: `P2G_LONDON_DISCOVERY_REPORT.json/.md` (generated in sandbox).
 - Tests: 66 passed + 1 skipped (fixed idempotent-enqueue replay stability). Real agent demonstrated E2E populating the Diagnostics matrix.
 - STOP: package ready for install on the real London PC; its report will determine V0.4 architecture (pending approval).
+
+## V0.4 — Production Repair (2026-06)
+Focused repair of 7 browser-test findings (no rebuild/redesign). User decisions: auth intentionally SKIPPED (open by design; hardcoded "Mohammad" identity removed → honest "Open access · No login · demo"); London is London, **Ontario, Canada** → **CAD**.
+- **Issue 1 (status honesty)**: New authoritative `GET /api/system-status` (object: items/summary/level/online/total/production_mode/production_note). Agent availability derives from real HMAC heartbeats (`compute_agent_state`: ONLINE/SIMULATED/STALE/OFFLINE/NOT_CONFIGURED); device (PX300/London BC) status only from fresh agent discovery evidence, else UNKNOWN. Removed hardcoded "All Systems Operational" + all-online `devices` seed reliance. Dashboard + Machines now consume it; Machines shows authoritative live status for monitored devices (PX300) and labels the rest "(inventory)". A disconnected agent can no longer appear online anywhere.
+- **Issue 2 (exception sync)**: `reconcile_exceptions()` — canonical rule: an order needs attention iff it has ≥1 unresolved exception. Keeps order.status in sync; resolve recomputes to safe 'waiting'/'Awaiting review' (never auto Ready/Completed). Dashboard `need_attention`, Exceptions "Open", and sidebar badge now agree. Runs on startup + on resolve.
+- **Issue 3 (search)**: `GET /api/search?q=` across orders/products/recipes/files (order # with or without '#'); Topbar dropdown with loading/no-results/error + keyboard nav; Orders page `?q=` filter + banner.
+- **Issue 4 (currency)**: `formatCurrency` (en-CA CAD); Products/Settings show CAD; London location migrated to city 'London, ON, Canada' + currency 'CAD' (no value conversion — demo values relabelled).
+- **Issue 5 (test data)**: `is_test` metadata; `migrate()` flags TEST_UI_*/TEST-EDGE*/#TEST* (never deletes). Orders/Products/edge-v2-agents exclude test by default; `?include_test=true` + UI toggles with "Test" badges. KPIs exclude test data.
+- **Issue 6 (auth)**: intentionally not built (accepted). Misleading identity removed; audit actor → "demo-user (no auth)"; production actor → "demo-operator". KNOWN GAP: no server-side authN/Z — documented, deferred.
+- **Issue 7 (readiness truthfulness)**: Dashboard shows "Simulation only — physical printing unavailable (REAL_FIERY_BACKEND = NOT_IMPLEMENTED)"; Production Engine MOCK/PRINT-locked safety preserved.
+- Tests: 83 passed + 2 skipped across 5 suites (new `test_repair_v04.py`, 10 tests). Frontend verified desktop + mobile. Testing agent: 100%/100%, no issues.
+- **Deployment**: fixes are in PREVIEW only. Production (myraana.com / build-saas-40.emergent.host) requires a redeploy to receive them.

@@ -1,0 +1,33 @@
+{
+  "summary": "V0.4 repair verified end-to-end. Added /app/backend/tests/test_repair_v04.py (10 tests, 9 pass + 1 optional skip for a non-existent /engine/status path) covering: (1) /api/system-status new object shape {items,summary,level,online,total,production_mode,production_note} — agent is OFFLINE (no HMAC heartbeat this iteration), Fiery PX300 + London BC are UNKNOWN (never ONLINE), summary is 'Edge Agent offline — device status unknown' at level=critical, production_note includes 'Simulation only' + 'NOT_IMPLEMENTED'; (2) /api/locations Print2Go London city=='London, ON, Canada' + currency=='CAD'; (3) /api/orders and /api/products EXCLUDE is_test by default, include_test=true returns them; (4) /api/production/edge-v2/agents excludes TEST-EDGE* by default; (5) /api/search?q=58311 and ?q=%2358311 both return the order with route '/orders?q=58311', unknown term returns 0 results; (6) Exception<->order sync round-trip: created a fresh order + injected an unresolved exception via pymongo — order flipped to status 'exception' and dashboard need_attention/open_exceptions incremented, POST /exceptions/{id}/resolve flipped it back to status 'waiting' + current_step 'Awaiting review' (NEVER Ready/Completed); cleaned up. Also fixed two pre-existing tests that regressed against the new spec: backend_test.py::test_list_endpoints no longer parametrizes system-status as a list (replaced with dedicated dict-shape test), test_edge_v2.py::test_heartbeat_valid_signature now queries edge-v2/agents?include_test=true (TEST-EDGE* agents are correctly excluded by default now). FULL REGRESSION: 83 passed + 2 skipped across backend_test.py, test_production.py, test_edge_v2.py, test_edge_v2a_discovery.py, test_repair_v04.py. FRONTEND (1920x1080): session-indicator visible '? / Open access / No login · demo', greeting 'Welcome to Print2Go OS', no hardcoded 'Mohammad' anywhere on Dashboard. System Status card shows 'Edge Agent offline' + 'Simulation only' + 'NOT_IMPLEMENTED'. Global search: typing '58311' shows [data-testid=search-results] dropdown, ArrowDown+Enter navigates to /orders?q=58311, orders-search-banner shows 'Showing 1 result for “58311”'; typing 'zzznoresultzz' shows [data-testid=search-no-results]. Products page: no '£' anywhere, '$' present (Intl en-CA format), products-test-toggle present. Orders page: orders-search-banner + orders-test-toggle present. Machines page: 'manually-tracked inventory' banner + [data-testid=machines-status-note] present; Fiery PX300 card shows 'LIVE MONITORED' badge + status 'Unknown (live)' + 'no connected agent' subtitle, ALL other machines show '(inventory)' label. Fiery PX300 is NEVER shown as Online. No console errors on any tested page.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_repair_v04.py",
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/test_edge_v2.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py::search — order.route uses `.lstrip('#')` which strips the '#' correctly; matches Orders page ?q= handler. Good.",
+    "server.py::compute_agent_state — categorical STALE/SIMULATED/OFFLINE/NOT_CONFIGURED mapping is correct and only 'ONLINE' when real_online + REAL kind + fresh heartbeat. Solid.",
+    "server.py::resolve_exception — after resolving the last unresolved exception for an order_ref, order is forcibly set to status='waiting' + step='Awaiting review'. Correctly excludes Ready/Completed but note: it only touches orders currently in status='exception'; if a preceding manual override moved it elsewhere, resolve is a no-op — acceptable.",
+    "server.py::seed still inserts legacy `edge_agents` / `devices` collections that duplicate the authoritative prod_edge_agents. Not a bug (system-status derives only from prod_edge_agents) but consider deprecating /api/edge-agents legacy read to avoid future confusion.",
+    "server.py::migrate — always writes London -> Ontario/CAD on every startup. Idempotent, but a startup log line stating 'migration applied' would help ops.",
+    "server.py::create_order — order_number uses count+58322 which can collide if any order was deleted. Not exercised by test suite but worth a unique-index or max-num lookup for prod.",
+    "backend_test.py — I converted the parametrized system-status list-shape assertion into a dedicated dict-shape test; edge_v2 test now correctly passes include_test=true.  These are test corrections, not product bugs."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_repair_v04.py (NEW)",
+    "/app/backend/tests/backend_test.py (updated system-status test to new dict shape)",
+    "/app/backend/tests/test_edge_v2.py (added include_test=true when asserting TEST-EDGE-* live_state)"
+  ],
+  "success_rate": {"backend": "100% (83/83 non-skipped across 5 suites)", "frontend": "100% (all 7 acceptance criteria verified visually + programmatically)"},
+  "test_credentials": "N/A — app is open by design; session-indicator confirms 'Open access · No login · demo'.",
+  "seed_data_creation": "Round-trip test transiently created a TEST_ order + one exception row via pymongo, verified state sync, then deleted both. No residual seed data.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend regression = 85 tests (83 passed + 2 skipped) across backend_test.py, test_production.py, test_edge_v2.py, test_edge_v2a_discovery.py, test_repair_v04.py. GET /api/system-status is now an OBJECT with items[], summary, level, online/total, production_mode, production_note — no longer a bare list. Enrollment gating in edge-v2 remains presence-based (see iteration_4 note). Order.exception sync is now driven by reconcile_exceptions() on startup + on every /dashboard/stats + on every /exceptions/{id}/resolve. Do NOT insert exceptions directly through /api — there is no POST /exceptions endpoint; test uses pymongo to inject the row (mongo URL/db name are quoted in backend/.env, must strip quotes).",
+  "rca of the issue": "N/A — no bugs. Two prior backend tests regressed against V0.4's intentional API changes and were repaired: (a) /api/system-status shape changed list->object (correct spec change) so a parametrized list-length assertion was moved into a dedicated dict-shape test; (b) TEST-EDGE-* agents are now excluded from /edge-v2/agents by default (correct Issue-5 behaviour) so a signature test that expected them in the default response was switched to include_test=true."
+}

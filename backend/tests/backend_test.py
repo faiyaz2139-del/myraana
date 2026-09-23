@@ -36,7 +36,7 @@ def test_dashboard_stats(s):
     ("orders", 14), ("products", 8), ("recipes", 3), ("processes", 7),
     ("machines", 6), ("edge-agents", 3), ("files", 5), ("sops", 5),
     ("exceptions", 5), ("audit-logs", 0), ("locations", 3), ("users", 5),
-    ("tenants", 3), ("system-status", 6),
+    ("tenants", 3),
 ])
 def test_list_endpoints(s, path, min_count):
     r = s.get(f"{API}/{path}")
@@ -47,6 +47,16 @@ def test_list_endpoints(s, path, min_count):
     # verify no mongo _id leaks
     if data:
         assert "_id" not in data[0]
+
+
+def test_system_status_endpoint(s):
+    r = s.get(f"{API}/system-status")
+    assert r.status_code == 200
+    d = r.json()
+    assert isinstance(d, dict)
+    assert isinstance(d.get("items"), list) and len(d["items"]) >= 4
+    for k in ("summary", "level", "online", "total", "production_mode", "production_note"):
+        assert k in d
 
 
 def test_reports(s):

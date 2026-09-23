@@ -85,7 +85,7 @@ def test_heartbeat_valid_signature(s, agent):
     assert r.status_code == 200, r.text
     assert r.json()["real_online"] is True
     # list should show REAL_ONLINE
-    a = {x["agent_id"]: x for x in s.get(f"{PROD}/edge-v2/agents").json()["agents"]}
+    a = {x["agent_id"]: x for x in s.get(f"{PROD}/edge-v2/agents?include_test=true").json()["agents"]}
     assert a[agent["agent_id"]]["live_state"] == "REAL_ONLINE"
 
 
