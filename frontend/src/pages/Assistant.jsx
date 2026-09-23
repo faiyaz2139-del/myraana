@@ -19,10 +19,27 @@ const SUGGESTIONS = [
 ];
 
 function fmt(text) {
-  const esc = (text || "")
-    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
-  return esc.replace(/\n/g, "<br/>");
+  const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const inline = (s) => esc(s)
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/`([^`]+)`/g, '<code class="px-1 py-0.5 rounded bg-black/10 dark:bg-white/10 text-[0.85em]">$1</code>');
+  const lines = (text || "").split("\n");
+  let html = "";
+  let inList = false;
+  for (let raw of lines) {
+    const line = raw.trimEnd();
+    const bullet = line.match(/^\s*[-*•]\s+(.*)$/);
+    if (bullet) {
+      if (!inList) { html += '<ul class="list-disc pl-5 my-1 space-y-0.5">'; inList = true; }
+      html += `<li>${inline(bullet[1])}</li>`;
+    } else {
+      if (inList) { html += "</ul>"; inList = false; }
+      if (line.trim() === "") html += "<br/>";
+      else html += `<p class="my-0.5">${inline(line.replace(/^#{1,6}\s+/, ""))}</p>`;
+    }
+  }
+  if (inList) html += "</ul>";
+  return html;
 }
 
 export default function Assistant() {

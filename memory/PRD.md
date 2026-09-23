@@ -104,4 +104,11 @@ Integrated **Emergent Object Storage** (S3-compatible, no user keys — uses EME
 - Verified end-to-end through the external ingress URL: upload → storage → list → download (bytes + content-type intact) → soft-delete. DB is source of truth; no base64 in Mongo.
 
 ## Pending user decision (not yet built)
-- **AI model integration** (user asked for ChatGPT, then Claude, then Gemini). Proposed but unconfirmed: a single AI Assistant with a model switcher across OpenAI + Anthropic + Gemini via the Emergent LLM key. Awaiting the user's pick of feature location + default model.
+- (resolved) AI model integration — built as the AI Assistant below.
+
+## V0.6 — Multi-provider AI Assistant (2026-06)
+Built a **Production Assistant** chat grounded in live data, with runtime switching across **Claude (claude-sonnet-4-6)**, **ChatGPT (gpt-5.6-sol)** and **Gemini (gemini-3-flash-preview)** via the Emergent Universal LLM key (emergentintegrations, streaming). Default = Claude.
+- Backend (`ai_assistant.py`, wired in `server.py`): `GET /api/assistant/providers`, `POST /api/assistant/chat` (SSE streaming via `stream_message`, `X-Accel-Buffering: no`), `GET/DELETE /api/assistant/history?session_id=`. System prompt injects live orders/exceptions/recipes/machines (`_build_context`); conversation memory persisted in Mongo `assistant_messages` and replayed (last 10) per turn. Safety: simulation-only, answers only from provided data, no hallucinated print/online claims.
+- Frontend (`Assistant.jsx`, route `/assistant`, sidebar "AI Assistant"): model switcher, suggestion chips, fetch + ReadableStream SSE consumption with live token rendering, user/assistant bubbles (provider-labelled), New chat + localStorage session persistence, small markdown renderer (bold/code/bullet lists). data-testids: assistant-provider-{id}, assistant-input, assistant-send, assistant-new-chat, assistant-suggestion, assistant-msg-user/assistant, assistant-streaming.
+- Verified: testing agent iteration_6 → backend 10/10, frontend 100% (all 3 providers stream grounded answers, memory + history + provider switch + new chat + reload persistence all pass). SSE also verified through external ingress via curl.
+- **Deployment**: preview only — redeploy to push to production (myraana.com).
