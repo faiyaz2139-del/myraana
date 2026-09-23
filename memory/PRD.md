@@ -112,3 +112,18 @@ Built a **Production Assistant** chat grounded in live data, with runtime switch
 - Frontend (`Assistant.jsx`, route `/assistant`, sidebar "AI Assistant"): model switcher, suggestion chips, fetch + ReadableStream SSE consumption with live token rendering, user/assistant bubbles (provider-labelled), New chat + localStorage session persistence, small markdown renderer (bold/code/bullet lists). data-testids: assistant-provider-{id}, assistant-input, assistant-send, assistant-new-chat, assistant-suggestion, assistant-msg-user/assistant, assistant-streaming.
 - Verified: testing agent iteration_6 → backend 10/10, frontend 100% (all 3 providers stream grounded answers, memory + history + provider switch + new chat + reload persistence all pass). SSE also verified through external ingress via curl.
 - **Deployment**: preview only — redeploy to push to production (myraana.com).
+
+## V0.7 — AI Assistant Production Hardening (2026-06)
+Hardened the multi-provider assistant for future real-production safety (UI preserved). `ai_assistant.py` now reuses the shared safety primitives from `production.py`.
+- **Provider-independent policy**: one hardened system prompt + one action gate applied identically to Claude/ChatGPT/Gemini. Switching model never changes permissions.
+- **AI ≠ source of truth / freshness**: `_read_context()` fetches CURRENT backend state each request (scoped); SSE emits a `meta` event with `data_refreshed` + scope; history is labelled context-only.
+- **Read/Action split + non-executing gate**: `POST /api/assistant/action-request` routes proposals through policy → always `executed=false, ai_can_approve=false, requires_human=true`; PRINT/IMPORT_TO_HELD/AUTHORIZE_PRODUCTION etc. → DENY. No side effects (verified).
+- **Grounding & safety**: never fabricates (non-existent orders → "not in LIVE DATA"), never claims PX300 online / printed / imported (REAL_FIERY_BACKEND=NOT_IMPLEMENTED), distinguishes LIVE DATA / RECIPE-SOP / AI INTERPRETATION.
+- **Tenant/location isolation**: hard-scoped to Print2Go / Print2Go London; refuses cross-tenant/cross-location and system-prompt/credential disclosure.
+- **Prompt-injection defence**: order notes/PDF/SOP text treated as UNTRUSTED; embedded instructions ignored.
+- **Provider-failure safety**: no silent cross-provider fallback — returns an error asking the user to pick another model.
+- **AI auditing**: `ai_audit_logs` (tenant, location, session, provider, model, records_accessed, detected_action_intent, action_request, timestamp) + concise visible `audit_logs` entries. No hidden reasoning stored.
+- Frontend: grounding bar (`assistant-grounding-bar`) shows Read-only + scope + `Data refreshed` time + refused-intent chip.
+- Verified: testing agent iteration_7 → backend 100% (33/33 hardening + 10/10 existing), frontend 100%, no issues. 18 attack cases (6 prompts × 3 providers) all refuse with no execution.
+- **Known gap**: no end-user auth (open by design) — per-user RBAC + authenticated tenant/location binding + unauthenticated-access blocking remain pending real auth. Assistant hard-scoping is the current mitigation.
+- **Deployment**: preview only — redeploy to push to production (myraana.com).
