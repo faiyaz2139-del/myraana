@@ -46,6 +46,10 @@ class Order(BaseModel):
     location: str = "Print2Go London"
     priority: str = "normal"  # low, normal, high, rush
     customer: str = ""
+    recipe_id: str = ""
+    recipe_name: str = ""
+    stage_index: int = 0
+    events: List[dict] = []
     updated_at: str = Field(default_factory=now_iso)
     created_at: str = Field(default_factory=now_iso)
 
@@ -71,6 +75,9 @@ class OrderUpdate(BaseModel):
     current_step: Optional[str] = None
     priority: Optional[str] = None
     customer: Optional[str] = None
+    recipe_id: Optional[str] = None
+    recipe_name: Optional[str] = None
+    stage_index: Optional[int] = None
 
 
 class Product(BaseModel):
