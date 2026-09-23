@@ -488,6 +488,7 @@ class ProductionEngine:
             recipe = await self.db.recipes.find_one({"recipe_id": job["recipe_id"]}, {"_id": 0})
             margin = (recipe or {}).get("parameters", {}).get("safe_area_margin_in", SAFE_AREA_MARGIN_IN)
             sa = analyze_safe_area(orig["data"], margin, unknown=job.get("safe_area_unknown", False))
+            await self.db.prod_jobs.update_one({"id": job["id"]}, {"$set": {"safe_area": sa}})
             if sa["status"] == "UNSAFE":
                 await self.set_stop(job, "UNSAFE_SAFE_AREA", f"Content {sa['nearest_in']}in from trim (< {margin}in safe margin)", actor)
                 return {"job": await self.get(job["id"]), "policy": decision, "measure": m, "safe_area": sa}

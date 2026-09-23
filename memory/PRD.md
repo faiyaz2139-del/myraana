@@ -59,3 +59,16 @@ Added a real production orchestration engine (`/app/backend/production.py`) alon
 - UI: new Production Engine page (workflow stepper, controls, STOP banner, lineage, audit chain, honesty banners); Recipes ACTIVE/DRAFT badges; Edge Agents honesty banner + live OFFLINE state. No redesign of V0.1.
 - Tests: 48 backend tests (24 V0.1 preserved + 24 V0.2) — 47 passed, 1 skipped (test isolation). Frontend E2E verified.
 - Deliberately NOT built: physical printing, job release/delete, real Fiery control, unrestricted AI desktop control. Awaiting approval for V0.3.
+
+## V0.3 — Real Windows Edge Agent + Fiery Discovery (2026-06)
+- Real runnable Edge Agent at `/app/edge_agent/` (agent.py, capabilities.py, config.example.json, README, requirements). Windows-targeted, cross-platform Python; packageable to .exe via PyInstaller.
+- Secure cloud edge protocol `/api/production/edge-v2/*`: registration (one-time signing_secret, 24h token), HMAC-SHA256 signed requests (METHOD\nPATH\nTS\nsha256(body)) with ±300s replay window, TLS, tenant/location validation, token-expiry checks.
+- REAL vs MOCK agent kinds; `REAL_ONLINE` only from an authenticated heartbeat — a simulated heartbeat can never be REAL_ONLINE.
+- Read-only action allowlist (PING, GET_AGENT_STATUS, DISCOVER_CAPABILITIES, CHECK_DEVICE_REACHABILITY, GET_ADAPTER_STATUS, READ_CONFIGURATION). Prohibited actions (PRINT/RELEASE/DELETE_JOB/CANCEL_JOB/CHANGE_*/EDIT_TEMPLATE/MODIFY_EXISTING_JOB) rejected by cloud (403) and agent, and audited.
+- Action lifecycle QUEUED→DISPATCHED→ACKNOWLEDGED→SUCCEEDED/FAILED; idempotency by key; immutable hash-chained edge audit per agent.
+- Security: local encrypted secret store (Fernet), redacting logger, host/IP redaction (key-based + regex substring) so machine addresses/secrets never reach cloud/AI; cloud references device_role=FIERY_PRIMARY (host resolved locally by agent).
+- Read-only Fiery discovery via TCP port probing → capability matrix; PX300 not present in sandbox so results honestly UNKNOWN/UNREACHABLE. REAL_FIERY_BACKEND remains NOT_IMPLEMENTED.
+- Deterministic safe-area detection (pypdf content-stream analysis): PASS / UNSAFE_SAFE_AREA / SAFE_AREA_REVIEW_REQUIRED; full-bleed backgrounds ignored; margin from approved recipe; AI cannot invent a PASS.
+- Docs: FIERY_DISCOVERY_REPORT.md, EDGE_AGENT_ARCHITECTURE.md, FIERY_CAPABILITY_MATRIX.md, V0.4_RECOMMENDATION.md.
+- Tests: 66 passed + 1 skipped, 0 failed (V0.1 24 + V0.2 24 + V0.3 edge-v2 19; new file test_edge_v2.py). Real agent demonstrated E2E (REAL_ONLINE, PRINT 403, redaction, UNKNOWN discovery, valid audit chain).
+- Awaiting explicit approval for V0.4 real Fiery write backend (HELD-only, no printing).

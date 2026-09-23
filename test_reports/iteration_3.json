@@ -1,0 +1,31 @@
+{
+  "summary": "V0.3 Real Windows Edge Agent + Fiery Discovery verified. Wrote /app/backend/tests/test_edge_v2.py (19 new tests) covering HMAC signing, tenant/location validation on register, valid signed heartbeat -> REAL_ONLINE, missing/wrong signature 401, stale timestamp 401, unknown-agent-signed 401, action allowlist (PING queued), prohibited (PRINT 403, DELETE_JOB 403), unknown action (400), idempotency (2nd call idempotent:true, same action id), full poll->DISPATCHED / ack / result lifecycle, redact_ips (both key-based and embedded IP substring — 10.0.0.5 and 192.168.0.200 both redacted from stored action, verified via GET /edge-v2/actions/{id}), hash-chained edge audit (chain_valid=true, contains REGISTER + PRINT DENY + PING_RESULT), and deterministic PREFLIGHT safe-area (safe_content PASS, unsafe_content STOP UNSAFE_SAFE_AREA with nearest_in<0.125, safe_area_unknown STOP SAFE_AREA_REVIEW_REQUIRED, blank correct_landscape_bleed PASS). V0.1 + V0.2 full regression executed. Config exposes action_allowlist(6), prohibited_actions(9), agent_kinds=[REAL,MOCK], device_roles=[FIERY_PRIMARY]. Frontend /edge-agents shows honesty banner, live_state + agent_kind badges (REAL/MOCK), and regression pages /production /recipes /dashboard /orders load with zero console errors. Result: 66 passed, 1 skipped, 0 failed.",
+  "backend_issues": {"critical": [], "minor": [
+    {"endpoint": "/api/production/edge-v2/agents", "issue": "When STOP happens during PREFLIGHT, the safe_area evidence is not persisted onto the job document (only returned in the advance() response). Minor observability nit — audit chain still captures the reason. Test adjusted to read safe_area from the advance response."}
+  ]},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/test_production.py",
+    "/app/backend/tests/test_edge_v2.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "production.py: signing_secret is returned once by /edge-v2/register (correct), and /edge-v2/agents projection excludes {token, signing_secret} (verified). Good.",
+    "production.py::authenticate_agent: uses hmac.compare_digest and validates ts window (300s), token expiry (24h), and tenant/location on register. All 4 negative cases (missing sig, wrong sig, stale ts, unknown agent) return 401 as expected.",
+    "production.py::redact_ips: correctly handles (a) sensitive-key names (host/ip/fiery_host/address) and (b) embedded IP substrings via regex on any string. Verified both channels redact simultaneously in stored action.",
+    "production.py::ACTION_ALLOWLIST is length 6, PROHIBITED_ACTIONS is length 9 — matches spec.",
+    "production.py::advance (PREFLIGHT): on STOP, job.safe_area is not persisted (only returned in-response) — consider persisting for post-mortem UI. Non-blocking.",
+    "production.py::edge_v2_enqueue is intentionally operator-side (not signed) per spec — confirmed. It also redact_ips on params before storing (defense-in-depth). Good.",
+    "EdgeAgents.jsx: correctly renders live agents with REAL/MOCK kind badge + live_state pill. No console errors on load."
+  ],
+  "updated_files": ["/app/backend/tests/test_edge_v2.py"],
+  "success_rate": {"backend": "100% (66/66 non-skipped)", "frontend": "100%"},
+  "test_credentials": "N/A (no user auth). Edge auth: HMAC via signing_secret from /edge-v2/register.",
+  "seed_data_creation": "Created TEST-EDGE-1 (REAL) via edge-v2/register; PING actions with idempotency keys; several TEST_ prod jobs for safe-area assertions. Non-invasive to seed data.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend regression = 66 tests across backend_test.py (V0.1), test_production.py (V0.2), test_edge_v2.py (V0.3 edge-v2). Signed requests must set X-P2G-Agent/X-P2G-Timestamp(unix seconds)/X-P2G-Signature = HMAC-SHA256(secret, METHOD\\nPATH\\nTS\\nsha256hex(body)). PATH excludes query. Body is exact bytes (empty for GET). For safe-area tests: advancing runs PREFLIGHT logic when current state==PREFLIGHT, so from ARTWORK_RECEIVED you advance ONCE to reach PREFLIGHT, then again to execute PREFLIGHT.",
+  "rca of the issue": "N/A — no bugs found."
+}
