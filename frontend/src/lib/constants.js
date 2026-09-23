@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, ClipboardList, ListChecks, AlertTriangle, Package, BookOpen,
   Workflow, Cpu, Radio, FileImage, Library, ScrollText, BarChart3, Settings,
-  MapPin, Users, Building2, Factory,
+  MapPin, Users, Building2, Factory, Activity,
 } from "lucide-react";
 
 export const NAV_SECTIONS = [
@@ -30,6 +30,7 @@ export const NAV_SECTIONS = [
     items: [
       { label: "Files & Artwork", to: "/files", icon: FileImage, id: "files" },
       { label: "SOP Library", to: "/sop-library", icon: Library, id: "sop-library" },
+      { label: "Diagnostics", to: "/diagnostics", icon: Activity, id: "diagnostics" },
       { label: "Audit Log", to: "/audit-log", icon: ScrollText, id: "audit-log" },
       { label: "Reports", to: "/reports", icon: BarChart3, id: "reports" },
     ],

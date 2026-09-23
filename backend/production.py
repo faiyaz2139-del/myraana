@@ -884,6 +884,14 @@ def build_router(db):
         if location_id != LOCATION_LONDON["id"]:
             raise HTTPException(400, "Unknown location")
         agent_kind = payload.get("agent_kind", "REAL")
+        # Optional enrollment-token enforcement (backward compatible: only enforced if tokens were minted)
+        active = await db.prod_enrollment_tokens.count_documents({"tenant_id": tenant_id, "location_id": location_id, "used": False})
+        if active > 0:
+            tok = payload.get("enrollment_token")
+            match = await db.prod_enrollment_tokens.find_one({"token": tok, "tenant_id": tenant_id, "location_id": location_id, "used": False}) if tok else None
+            if not match:
+                raise HTTPException(401, "Valid enrollment token required")
+            await db.prod_enrollment_tokens.update_one({"token": tok}, {"$set": {"used": True, "used_at": now_iso(), "used_by": agent_id}})
         signing_secret = new_id("sec-") + uuid.uuid4().hex
         token = new_id("tok-") + uuid.uuid4().hex
         expiry = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
@@ -924,7 +932,7 @@ def build_router(db):
         ikey = payload.get("idempotency_key") or new_id("idem-")
         existing = await db.prod_edge_actions.find_one({"agent_id": agent_id, "idempotency_key": ikey}, {"_id": 0})
         if existing:
-            return {"idempotent": True, "action": existing}
+            return {"queued": True, "idempotent": True, "action": existing}
         act = {"id": new_id("ACT-"), "agent_id": agent_id, "action": action,
                "params": redact_ips(payload.get("params", {})), "device_role": payload.get("device_role", "FIERY_PRIMARY"),
                "idempotency_key": ikey, "status": "QUEUED", "created_at": now_iso()}
@@ -1001,6 +1009,90 @@ def build_router(db):
         if not a:
             raise HTTPException(404, "Action not found")
         return a
+
+    # ---- Enrollment tokens (operator mints; agent presents at register) ----
+    @router.post("/edge-v2/enrollment-tokens")
+    async def mint_enrollment_token(payload: dict = Body(default={})):
+        tenant_id = payload.get("tenant_id", "TEN-PRINT2GO")
+        location_id = payload.get("location_id", "LOC-LONDON")
+        token = "ENROLL-" + uuid.uuid4().hex.upper()[:16]
+        await db.prod_enrollment_tokens.insert_one({
+            "id": new_id("ENR-"), "token": token, "tenant_id": tenant_id, "location_id": location_id,
+            "used": False, "created_at": now_iso()})
+        return {"enrollment_token": token, "tenant_id": tenant_id, "location_id": location_id,
+                "note": "Give this token to the on-prem operator for first-run setup. Single use."}
+
+    # ---- Discovery report (built from the agent's latest read-only DISCOVER_CAPABILITIES) ----
+    def _flag(summary, key, default="UNKNOWN"):
+        try:
+            return summary.get("flags", {}).get(key, default)
+        except Exception:
+            return default
+
+    async def _latest_discovery(agent_id):
+        return await db.prod_edge_actions.find_one(
+            {"agent_id": agent_id, "action": "DISCOVER_CAPABILITIES", "status": "SUCCEEDED"},
+            {"_id": 0}, sort=[("result_at", -1)])
+
+    def _build_report(agent, action):
+        agent = agent or {}
+        result = (action or {}).get("result", {}) or {}
+        evidence = (action or {}).get("evidence", {}) or {}
+        report = result.get("report", {}) or {}
+        summary = report.get("summary", result.get("summary", {})) or {}
+        matrix = evidence.get("capability_matrix", report.get("capability_matrix", [])) or []
+        fields = {
+            "EDGE_AGENT_CONNECTED": bool(agent.get("real_online")),
+            "PX300_REACHABLE": report.get("px300", {}).get("reachable", "UNKNOWN"),
+            "CWS_DETECTED": report.get("fiery_software", {}).get("command_workstation", {}).get("detected", "UNKNOWN"),
+            "CWS_VERSION": report.get("fiery_software", {}).get("command_workstation", {}).get("version", "UNKNOWN"),
+            "HOT_FOLDER_AVAILABLE": report.get("fiery_software", {}).get("hot_folders", {}).get("detected", "UNKNOWN"),
+            "JOBFLOW_AVAILABLE": report.get("fiery_software", {}).get("jobflow", {}).get("detected", "UNKNOWN"),
+            "FIERY_API_AVAILABLE": _flag(summary, "REAL_FIERY_API_AVAILABLE"),
+            "JDF_JMF_AVAILABLE": _flag(summary, "JDF_JMF_AVAILABLE"),
+            "LONDON_BC_DETECTED": report.get("london_bc", {}).get("detected", "UNKNOWN"),
+            "LONDON_BC_TYPE": report.get("london_bc", {}).get("type", "UNKNOWN"),
+            "LONDON_BC_PROGRAMMATICALLY_APPLICABLE": report.get("london_bc", {}).get("programmatically_applicable", "UNKNOWN"),
+            "GUI_AUTOMATION_REQUIRED": report.get("gui_automation_required", "UNKNOWN"),
+            "REAL_FIERY_BACKEND": "NOT_IMPLEMENTED",
+            "RECOMMENDED_V0_4_BACKEND": report.get("recommended_v0_4_backend", "UNKNOWN — awaiting on-prem evidence"),
+        }
+        return {"fields": fields, "capability_matrix": matrix,
+                "windows": report.get("windows", {}), "generated_at": now_iso(),
+                "agent_id": agent.get("agent_id"), "evidence": "TCP probe + local software detection (read-only)"}
+
+    def _report_md(rep):
+        f = rep["fields"]
+        lines = ["# P2G_LONDON_DISCOVERY_REPORT", "", f"_Generated: {rep['generated_at']} · agent: {rep.get('agent_id')}_", "", "## Summary", "```"]
+        for k, v in f.items():
+            lines.append(f"{k} = {v}")
+        lines += ["```", "", "## Capability Matrix", "",
+                  "| ACTION | AVAILABLE | MECHANISM | SUPPORTED | REQ_CONFIG | REQ_LICENSE | LOCAL/SERVER | CONFIDENCE | EVIDENCE |",
+                  "|---|---|---|---|---|---|---|---|---|"]
+        for r in rep["capability_matrix"]:
+            lines.append("| {action} | {available} | {mechanism} | {supported} | {requires_configuration} | {requires_license} | {local_or_server} | {confidence} | {evidence} |".format(**{**{
+                "action": "", "available": "", "mechanism": "", "supported": "", "requires_configuration": "",
+                "requires_license": "", "local_or_server": "", "confidence": "", "evidence": ""}, **r}))
+        lines += ["", f"> REAL_FIERY_BACKEND = NOT_IMPLEMENTED. Read-only discovery. EVIDENCE: {rep['evidence']}"]
+        return "\n".join(lines)
+
+    @router.get("/edge-v2/discovery/{agent_id}/latest")
+    async def discovery_latest(agent_id: str):
+        action = await _latest_discovery(agent_id)
+        agent = await db.prod_edge_agents.find_one({"agent_id": agent_id}, {"_id": 0, "token": 0, "signing_secret": 0})
+        if agent:
+            live, real_online = _v2_live(agent)
+            agent["real_online"] = real_online
+        return {"has_report": bool(action), "agent": agent, "report": _build_report(agent, action) if action else None}
+
+    @router.get("/edge-v2/discovery/{agent_id}/report")
+    async def discovery_report(agent_id: str):
+        action = await _latest_discovery(agent_id)
+        agent = await db.prod_edge_agents.find_one({"agent_id": agent_id}, {"_id": 0, "token": 0, "signing_secret": 0})
+        if agent:
+            _, agent["real_online"] = _v2_live(agent)
+        rep = _build_report(agent, action)
+        return {"json": rep, "markdown": _report_md(rep)}
 
     return router
 

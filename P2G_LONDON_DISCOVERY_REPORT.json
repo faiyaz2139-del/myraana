@@ -1,0 +1,235 @@
+{
+  "fields": {
+    "EDGE_AGENT_CONNECTED": false,
+    "PX300_REACHABLE": false,
+    "CWS_DETECTED": "UNKNOWN",
+    "CWS_VERSION": "UNKNOWN",
+    "HOT_FOLDER_AVAILABLE": "UNKNOWN",
+    "JOBFLOW_AVAILABLE": "UNKNOWN",
+    "FIERY_API_AVAILABLE": "UNKNOWN",
+    "JDF_JMF_AVAILABLE": "UNKNOWN",
+    "LONDON_BC_DETECTED": "UNKNOWN",
+    "LONDON_BC_TYPE": "UNKNOWN",
+    "LONDON_BC_PROGRAMMATICALLY_APPLICABLE": "UNKNOWN",
+    "GUI_AUTOMATION_REQUIRED": "UNKNOWN",
+    "REAL_FIERY_BACKEND": "NOT_IMPLEMENTED",
+    "RECOMMENDED_V0_4_BACKEND": "UNKNOWN \u2014 run on the London PC that can reach PX300 to obtain evidence"
+  },
+  "report": {
+    "windows": {
+      "is_windows": false,
+      "os": "Linux",
+      "version": "#1 SMP Sat Jun 27 09:31:30 UTC 2026",
+      "release": "6.12.85+",
+      "machine": "aarch64",
+      "python": "3.11.16",
+      "network_interfaces": [
+        {
+          "hostname": "agent-env-78da924b-1c01-48af-b0ee-3aaf70bc88f7"
+        }
+      ]
+    },
+    "fiery_software": {
+      "command_workstation": {
+        "detected": "UNKNOWN",
+        "version": "UNKNOWN",
+        "note": "not a Windows host"
+      },
+      "hot_folders": {
+        "detected": "UNKNOWN",
+        "version": "UNKNOWN",
+        "note": "not a Windows host"
+      },
+      "jobflow": {
+        "detected": "UNKNOWN",
+        "version": "UNKNOWN",
+        "note": "not a Windows host"
+      },
+      "fiery_api": {
+        "detected": "UNKNOWN"
+      }
+    },
+    "px300": {
+      "reachable": false,
+      "host": "[REDACTED]",
+      "ports": {
+        "139": "closed/unreachable",
+        "443": "closed/unreachable",
+        "445": "closed/unreachable",
+        "515": "closed/unreachable",
+        "631": "closed/unreachable",
+        "8010": "closed/unreachable",
+        "8080": "closed/unreachable",
+        "8443": "closed/unreachable",
+        "9100": "closed/unreachable"
+      }
+    },
+    "london_bc": {
+      "template": "London BC",
+      "detected": "UNKNOWN",
+      "type": "UNKNOWN",
+      "location": "UNKNOWN",
+      "programmatically_applicable": "UNKNOWN",
+      "evidence": [
+        "PX300 unreachable \u2014 server-side presets/templates cannot be queried",
+        "hot_folders_detected=UNKNOWN; command_workstation_detected=UNKNOWN"
+      ]
+    },
+    "summary": {
+      "mechanisms": {
+        "FIERY_API": {
+          "state": "UNKNOWN",
+          "ports_open": [],
+          "confidence": "LOW"
+        },
+        "COMMAND_WORKSTATION_JDF": {
+          "state": "UNKNOWN",
+          "ports_open": [],
+          "confidence": "LOW"
+        },
+        "HOT_FOLDERS_SMB": {
+          "state": "UNKNOWN",
+          "ports_open": [],
+          "confidence": "LOW"
+        },
+        "VIRTUAL_PRINTER_IPP": {
+          "state": "UNKNOWN",
+          "ports_open": [],
+          "confidence": "LOW"
+        },
+        "LPR": {
+          "state": "UNKNOWN",
+          "ports_open": [],
+          "confidence": "LOW"
+        },
+        "RAW_PDL": {
+          "state": "UNKNOWN",
+          "ports_open": [],
+          "confidence": "LOW"
+        },
+        "JMF_JDF_HTTP": {
+          "state": "UNKNOWN",
+          "ports_open": [],
+          "confidence": "LOW"
+        }
+      },
+      "flags": {
+        "REAL_FIERY_API_AVAILABLE": "UNKNOWN",
+        "HOT_FOLDER_AVAILABLE": "UNKNOWN",
+        "JDF_JMF_AVAILABLE": "UNKNOWN",
+        "LONDON_BC_DETECTED": "UNKNOWN",
+        "LONDON_BC_PROGRAMMATICALLY_APPLICABLE": "UNKNOWN",
+        "GUI_AUTOMATION_REQUIRED": "UNKNOWN",
+        "device_reachable": false
+      }
+    },
+    "capability_matrix": [
+      {
+        "action": "CONNECT",
+        "available": "UNKNOWN",
+        "mechanism": "Fiery API / Hot Folder / CWS (TBD)",
+        "supported": "UNKNOWN",
+        "requires_configuration": "UNKNOWN",
+        "requires_license": "UNKNOWN",
+        "local_or_server": "SERVER",
+        "evidence": "TCP probe only; device not reachable in this environment",
+        "confidence": "LOW"
+      },
+      {
+        "action": "IMPORT_TO_HELD",
+        "available": "UNKNOWN",
+        "mechanism": "Fiery API / Hot Folder / CWS (TBD)",
+        "supported": "UNKNOWN",
+        "requires_configuration": "UNKNOWN",
+        "requires_license": "UNKNOWN",
+        "local_or_server": "SERVER",
+        "evidence": "TCP probe only; device not reachable in this environment",
+        "confidence": "LOW"
+      },
+      {
+        "action": "FIND_JOB",
+        "available": "UNKNOWN",
+        "mechanism": "Fiery API / Hot Folder / CWS (TBD)",
+        "supported": "UNKNOWN",
+        "requires_configuration": "UNKNOWN",
+        "requires_license": "UNKNOWN",
+        "local_or_server": "SERVER",
+        "evidence": "TCP probe only; device not reachable in this environment",
+        "confidence": "LOW"
+      },
+      {
+        "action": "READ_JOB_STATE",
+        "available": "UNKNOWN",
+        "mechanism": "Fiery API / Hot Folder / CWS (TBD)",
+        "supported": "UNKNOWN",
+        "requires_configuration": "UNKNOWN",
+        "requires_license": "UNKNOWN",
+        "local_or_server": "SERVER",
+        "evidence": "TCP probe only; device not reachable in this environment",
+        "confidence": "LOW"
+      },
+      {
+        "action": "OPEN_IMPOSE",
+        "available": "UNKNOWN",
+        "mechanism": "Fiery API / Hot Folder / CWS (TBD)",
+        "supported": "UNKNOWN",
+        "requires_configuration": "UNKNOWN",
+        "requires_license": "UNKNOWN",
+        "local_or_server": "SERVER",
+        "evidence": "TCP probe only; device not reachable in this environment",
+        "confidence": "LOW"
+      },
+      {
+        "action": "APPLY_TEMPLATE",
+        "available": "UNKNOWN",
+        "mechanism": "Fiery API / Hot Folder / CWS (TBD)",
+        "supported": "UNKNOWN",
+        "requires_configuration": "UNKNOWN",
+        "requires_license": "UNKNOWN",
+        "local_or_server": "SERVER",
+        "evidence": "TCP probe only; device not reachable in this environment",
+        "confidence": "LOW"
+      },
+      {
+        "action": "SAVE_IMPOSED_JOB",
+        "available": "UNKNOWN",
+        "mechanism": "Fiery API / Hot Folder / CWS (TBD)",
+        "supported": "UNKNOWN",
+        "requires_configuration": "UNKNOWN",
+        "requires_license": "UNKNOWN",
+        "local_or_server": "SERVER",
+        "evidence": "TCP probe only; device not reachable in this environment",
+        "confidence": "LOW"
+      },
+      {
+        "action": "VERIFY_JOB_STATE",
+        "available": "UNKNOWN",
+        "mechanism": "Fiery API / Hot Folder / CWS (TBD)",
+        "supported": "UNKNOWN",
+        "requires_configuration": "UNKNOWN",
+        "requires_license": "UNKNOWN",
+        "local_or_server": "SERVER",
+        "evidence": "TCP probe only; device not reachable in this environment",
+        "confidence": "LOW"
+      }
+    ],
+    "gui_automation_required": "UNKNOWN",
+    "recommended_v0_4_backend": "UNKNOWN \u2014 run on the London PC that can reach PX300 to obtain evidence",
+    "read_only_enforced": true,
+    "blocked_actions": [
+      "PRINT",
+      "RELEASE",
+      "DELETE",
+      "CANCEL",
+      "IMPORT",
+      "CHANGE_MEDIA",
+      "CHANGE_QUANTITY",
+      "CHANGE_COLOR",
+      "APPLY_TEMPLATE",
+      "MODIFY_JOB",
+      "CREATE_HOT_FOLDER",
+      "EDIT_PRESET"
+    ],
+    "REAL_FIERY_BACKEND": "NOT_IMPLEMENTED"
+  }
+}

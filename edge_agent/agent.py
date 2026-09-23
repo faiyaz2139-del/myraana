@@ -26,6 +26,7 @@ import requests
 from cryptography.fernet import Fernet
 
 import capabilities
+import discovery
 
 BASE_DIR = Path(__file__).parent
 CONFIG_PATH = BASE_DIR / "config.json"
@@ -55,11 +56,29 @@ log = logging.getLogger("edge")
 log.addFilter(RedactFilter())
 
 
+def first_run_setup():
+    """Interactive first-run: ask ONLY for SaaS URL + registration token."""
+    print("=== Print2Go Edge Agent — First-Run Setup ===")
+    url = input("SaaS server URL (https://...): ").strip()
+    token = input("Edge Agent registration token (blank if none): ").strip()
+    cfg = {
+        "agent_id": "P2G-LONDON-EDGE-01", "tenant_id": "TEN-PRINT2GO", "location_id": "LOC-LONDON",
+        "version": "0.3.0", "cloud_url": url, "enrollment_token": token,
+        "heartbeat_seconds": 10, "poll_seconds": 5,
+        "fiery": {"server": "PX300", "host": "192.168.0.200", "imposition_template": "London BC"},
+    }
+    CONFIG_PATH.write_text(json.dumps(cfg, indent=2))
+    print("Saved config.json. (Fiery host stays local and is never sent to the cloud.)")
+    return cfg
+
+
 def load_config():
     if not CONFIG_PATH.exists():
-        log.error("config.json missing. Copy config.example.json -> config.json and edit.")
-        sys.exit(1)
-    return json.loads(CONFIG_PATH.read_text())
+        return first_run_setup()
+    cfg = json.loads(CONFIG_PATH.read_text())
+    if not cfg.get("cloud_url") or "example.com" in cfg.get("cloud_url", ""):
+        return first_run_setup()
+    return cfg
 
 
 def _fernet():
@@ -146,6 +165,7 @@ class EdgeAgent:
         r = requests.post(f"{self.base}/api/production/edge-v2/register", json={
             "agent_id": self.agent_id, "tenant_id": self.tenant_id, "location_id": self.location_id,
             "agent_kind": "REAL", "version": self.cfg.get("version", "0.3.0"),
+            "enrollment_token": self.cfg.get("enrollment_token", ""),
             "capabilities": sorted(capabilities.ALLOWLISTED),
         }, timeout=15)
         r.raise_for_status()
@@ -153,6 +173,14 @@ class EdgeAgent:
         self.secrets = {"agent_id": self.agent_id, "token": data["token"], "signing_secret": data["signing_secret"]}
         save_secrets(self.secrets)
         log.info("Registered. Secret stored in encrypted local store (never logged).")
+        print("\n=== EDGE AGENT REGISTERED ===")
+        print(f"  Agent ID     : {self.agent_id}")
+        print(f"  Tenant       : {self.tenant_id}")
+        print(f"  Location     : {self.location_id}")
+        print(f"  Connection   : {self.base}")
+        print(f"  Capabilities : {', '.join(sorted(capabilities.ALLOWLISTED))}")
+        print(f"  Agent version: {self.cfg.get('version')}")
+        print("  Last heartbeat: (starting)\n")
 
     # ---- heartbeat ----
     def heartbeat_loop(self):
@@ -192,8 +220,11 @@ class EdgeAgent:
             res = capabilities.check_reachability(fiery.get("host"), capabilities.FIERY_PROBE_PORTS)
             return True, {"reachable": res["reachable"], "device_role": "FIERY_PRIMARY"}, res["evidence_redacted"]
         if act == "DISCOVER_CAPABILITIES":
-            matrix = capabilities.discover(fiery)
-            return True, {"summary": matrix["summary"]}, {"capability_matrix": matrix["matrix"]}
+            rep = discovery.full_report(fiery)
+            return True, {"report": {k: rep[k] for k in ("windows", "fiery_software", "px300", "london_bc",
+                                                          "summary", "gui_automation_required",
+                                                          "recommended_v0_4_backend", "REAL_FIERY_BACKEND")}}, \
+                   {"capability_matrix": rep["capability_matrix"]}
         if act == "GET_ADAPTER_STATUS":
             matrix = capabilities.discover(fiery)
             return True, {"REAL_FIERY_BACKEND": "NOT_IMPLEMENTED", "active_mode": "DISCOVERY_ONLY",

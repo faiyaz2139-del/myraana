@@ -72,3 +72,15 @@ Added a real production orchestration engine (`/app/backend/production.py`) alon
 - Docs: FIERY_DISCOVERY_REPORT.md, EDGE_AGENT_ARCHITECTURE.md, FIERY_CAPABILITY_MATRIX.md, V0.4_RECOMMENDATION.md.
 - Tests: 66 passed + 1 skipped, 0 failed (V0.1 24 + V0.2 24 + V0.3 edge-v2 19; new file test_edge_v2.py). Real agent demonstrated E2E (REAL_ONLINE, PRINT 403, redaction, UNKNOWN discovery, valid audit chain).
 - Awaiting explicit approval for V0.4 real Fiery write backend (HELD-only, no printing).
+
+## V0.3A — On-Prem Windows Discovery Package (2026-06)
+- Windows deployment package `/app/edge_agent/windows_package/` (install/start/uninstall/run_discovery .bat, config.template.json, build_windows_exe.bat + README). Self-contained `.exe` built on Windows via PyInstaller (no Python needed on the shop PC; cross-compile not possible from Linux — build script provided).
+- First-run setup in agent.py: prompts only for SaaS URL + registration (enrollment) token, then prints Agent ID/Tenant/Location/Connection/Capabilities/Version.
+- Optional enrollment tokens: cloud `POST /edge-v2/enrollment-tokens` mints single-use tokens; register enforces them only if any are minted (backward compatible).
+- Read-only discovery module `discovery.py`: Windows env + network, installed Fiery software (Command WorkStation/Hot Folders/JobFlow via uninstall registry), PX300 TCP reachability, and a read-only London BC classification attempt (never applied). Standalone `diagnose.py` writes `P2G_LONDON_DISCOVERY_REPORT.json/.md`.
+- Cloud discovery endpoints: `GET /edge-v2/discovery/{agent}/latest` and `/report` (JSON + Markdown) built from the agent's latest read-only DISCOVER_CAPABILITIES result.
+- SaaS Diagnostics screen (`/diagnostics`): status tiles (Edge Agent, PX300, Network, CWS, Hot Folders, London BC, JobFlow, REAL FIERY BACKEND=NOT IMPLEMENTED), capability matrix, RUN READ-ONLY DISCOVERY + EXPORT DISCOVERY REPORT.
+- Hard-blocked during discovery: PRINT/RELEASE/DELETE/CANCEL/IMPORT/CHANGE_*/APPLY_TEMPLATE/MODIFY_JOB/CREATE_HOT_FOLDER/EDIT_PRESET. Everything remains read-only; PX300 not present in sandbox → all results honest UNKNOWN/UNREACHABLE.
+- Sample reports at repo root: `P2G_LONDON_DISCOVERY_REPORT.json/.md` (generated in sandbox).
+- Tests: 66 passed + 1 skipped (fixed idempotent-enqueue replay stability). Real agent demonstrated E2E populating the Diagnostics matrix.
+- STOP: package ready for install on the real London PC; its report will determine V0.4 architecture (pending approval).

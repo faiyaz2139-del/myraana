@@ -14,6 +14,7 @@ import Machines from "@/pages/Machines";
 import EdgeAgents from "@/pages/EdgeAgents";
 import Files from "@/pages/Files";
 import SOPLibrary from "@/pages/SOPLibrary";
+import Diagnostics from "@/pages/Diagnostics";
 import AuditLog from "@/pages/AuditLog";
 import Reports from "@/pages/Reports";
 import Settings from "@/pages/Settings";
@@ -39,6 +40,7 @@ function App() {
           <Route path="/edge-agents" element={<EdgeAgents />} />
           <Route path="/files" element={<Files />} />
           <Route path="/sop-library" element={<SOPLibrary />} />
+          <Route path="/diagnostics" element={<Diagnostics />} />
           <Route path="/audit-log" element={<AuditLog />} />
           <Route path="/reports" element={<Reports />} />
           <Route path="/settings" element={<Settings />} />
