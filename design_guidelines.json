@@ -1,0 +1,178 @@
+{
+  "project_name": "Print2Go Production OS",
+  "app_type": "hybrid_fullstack_saas_dashboard",
+  "archetype": "THE PERFORMANCE PRO / SWISS INDUSTRIAL PRECISION",
+  "design_philosophy": {
+    "core_principles": [
+      "Tactical Manufacturing Precision: Data-dense, high-scanability UI tailored for commercial printing management and machine operators.",
+      "Dual Theme Adaptability: Default light crisp industrial theme with rich slate neutrals, paired with a dark high-contrast tactical dark theme.",
+      "Redundant Status Encoding: Statuses must use explicit label text, distinct icons, and calibrated semantic badge colors (never relying solely on color).",
+      "Asymmetric Dashboard & Density Grid: Clear visual hierarchy separating high-level KPI stat cards, real-time Production Queue tables, System Edge Agents, and quick action cards."
+    ]
+  },
+  "typography": {
+    "font_family_primary": "Plus Jakarta Sans, -apple-system, BlinkMacSystemFont, sans-serif",
+    "font_family_heading": "Cabinet Grotesk, Plus Jakarta Sans, sans-serif",
+    "font_family_mono": "JetBrains Mono, SFMono-Regular, Consolas, monospace",
+    "font_imports": [
+      "@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');"
+    ],
+    "hierarchy": {
+      "h1_page_title": "text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100",
+      "h2_section_header": "text-lg sm:text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100",
+      "h3_card_header": "text-base font-semibold tracking-tight text-slate-800 dark:text-slate-200",
+      "body_normal": "text-sm font-normal text-slate-600 dark:text-slate-300 leading-relaxed",
+      "body_small": "text-xs font-normal text-slate-500 dark:text-slate-400",
+      "mono_data": "font-mono text-xs font-medium tracking-wide text-slate-700 dark:text-slate-300"
+    }
+  },
+  "colors": {
+    "theme_mode": "dual_support_default_light",
+    "brand_primary": {
+      "light": "#2563eb",
+      "light_hover": "#1d4ed8",
+      "dark": "#3b82f6",
+      "dark_hover": "#60a5fa"
+    },
+    "surface": {
+      "light_bg": "#f8fafc",
+      "light_card": "#ffffff",
+      "light_sidebar": "#0f172a",
+      "light_sidebar_text": "#94a3b8",
+      "light_sidebar_active": "#1e293b",
+      "light_border": "#e2e8f0",
+      "dark_bg": "#090d16",
+      "dark_card": "#111827",
+      "dark_sidebar": "#030712",
+      "dark_border": "#1f2937"
+    },
+    "semantic_statuses": {
+      "ready_completed": {
+        "label": "Ready / Completed",
+        "bg_light": "bg-emerald-50 dark:bg-emerald-950/40",
+        "text_light": "text-emerald-700 dark:text-emerald-400",
+        "border": "border-emerald-200 dark:border-emerald-800/50",
+        "dot": "bg-emerald-500"
+      },
+      "running": {
+        "label": "Running / In Production",
+        "bg_light": "bg-blue-50 dark:bg-blue-950/40",
+        "text_light": "text-blue-700 dark:text-blue-400",
+        "border": "border-blue-200 dark:border-blue-800/50",
+        "dot": "bg-blue-500 animate-pulse"
+      },
+      "waiting": {
+        "label": "Waiting / Scheduled",
+        "bg_light": "bg-amber-50 dark:bg-amber-950/40",
+        "text_light": "text-amber-700 dark:text-amber-400",
+        "border": "border-amber-200 dark:border-amber-800/50",
+        "dot": "bg-amber-500"
+      },
+      "exception": {
+        "label": "Needs Attention / Exception",
+        "bg_light": "bg-rose-50 dark:bg-rose-950/40",
+        "text_light": "text-rose-700 dark:text-rose-400",
+        "border": "border-rose-200 dark:border-rose-800/50",
+        "dot": "bg-rose-500"
+      }
+    }
+  },
+  "layout_and_navigation": {
+    "sidebar": {
+      "width": "w-64",
+      "style": "fixed top-0 bottom-0 left-0 bg-slate-900 dark:bg-slate-950 text-slate-300 border-r border-slate-800 z-40 flex flex-col",
+      "logo_section": "px-6 py-5 border-b border-slate-800 flex items-center gap-3",
+      "brand_badge": "bg-blue-600 text-white p-2 rounded-lg font-black text-sm tracking-wider shadow-sm",
+      "navigation_sections": [
+        {
+          "title": "CORE OPERATIONAL",
+          "items": ["Dashboard", "Orders", "Production Queue", "Exceptions"]
+        },
+        {
+          "title": "PRODUCTION ASSETS",
+          "items": ["Products", "Recipes", "Processes", "Machines", "Edge Agents"]
+        },
+        {
+          "title": "KNOWLEDGE & AUDIT",
+          "items": ["Files & Artwork", "SOP Library", "Audit Log", "Reports"]
+        },
+        {
+          "title": "ADMINISTRATION",
+          "items": ["Settings", "Locations", "Users", "Tenants"]
+        }
+      ],
+      "active_item_style": "bg-blue-600 text-white font-semibold rounded-lg px-3 py-2 flex items-center gap-3 shadow-sm transition-all",
+      "inactive_item_style": "text-slate-400 hover:text-slate-100 hover:bg-slate-800/60 rounded-lg px-3 py-2 flex items-center gap-3 transition-all"
+    },
+    "main_content": {
+      "wrapper": "pl-64 min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200",
+      "header_bar": "sticky top-0 z-30 h-16 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-8 flex items-center justify-between",
+      "container_padding": "p-8 space-y-8"
+    }
+  },
+  "components": {
+    "kpi_cards": {
+      "grid_layout": "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5",
+      "card_style": "bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group",
+      "stat_number": "text-3xl font-extrabold text-slate-900 dark:text-white mt-2 tracking-tight",
+      "stat_trend": "inline-flex items-center text-xs font-semibold px-2 py-0.5 rounded-full mt-2"
+    },
+    "production_queue_table": {
+      "wrapper": "bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm overflow-hidden",
+      "tabs_bar": "flex items-center gap-1 p-2 bg-slate-100/80 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 overflow-x-auto",
+      "tab_active": "bg-white dark:bg-slate-900 text-slate-900 dark:text-white px-4 py-2 rounded-lg text-xs font-bold shadow-sm border border-slate-200 dark:border-slate-800",
+      "tab_inactive": "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 px-4 py-2 rounded-lg text-xs font-medium transition-colors",
+      "table_header": "bg-slate-50/80 dark:bg-slate-950 text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider border-b border-slate-200 dark:border-slate-800",
+      "table_row": "border-b border-slate-100 dark:border-slate-800/60 hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors"
+    },
+    "quick_action_cards": {
+      "grid_layout": "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4",
+      "card_style": "bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm hover:border-blue-500 dark:hover:border-blue-500 transition-all cursor-pointer group flex flex-col justify-between"
+    },
+    "system_status_and_exceptions": {
+      "grid_layout": "grid grid-cols-1 lg:grid-cols-3 gap-6",
+      "panel_style": "bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-4"
+    }
+  },
+  "media_assets": {
+    "image_urls": [
+      {
+        "category": "printing_press_machinery",
+        "url": "https://images.unsplash.com/photo-1503694978374-8a2fa686963a?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzB8MHwxfHNlYXJjaHwxfHxjb21tZXJjaWFsJTIwcHJpbnRpbmclMjBtYWNoaW5lJTIwcHJpbnQlMjBzaG9wJTIwcHJvZHVjdGlvbiUyMHBhcGVyJTIwY2F0YWxvZyUyMHByb2R1Y3RzJTIwcGFja2FnaW5nJTIwZGVzaWdufGVufDB8fHx8MTc5MDE4NjAxM3ww&ixlib=rb-4.1.0&q=85",
+        "description": "Commercial printing press machine in action"
+      },
+      {
+        "category": "industrial_roller_ink",
+        "url": "https://images.unsplash.com/photo-1758183961426-88d64eb5f787?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzB8MHwxfHNlYXJjaHw0fHxjb21tZXJjaWFsJTIwcHJpbnRpbmclMjBtYWNoaW5lJTIwcHJpbnQlMjBzaG9wJTIwcHJvZHVjdGlvbiUyMHBhcGVyJTIwY2F0YWxvZyUyMHByb2R1Y3RzJTIwcGFja2FnaW5nJTIwZGVzaWdufGVufDB8fHx8MTc5MDE4NjAxM3ww&ixlib=rb-4.1.0&q=85",
+        "description": "Industrial printing press rollers with ink"
+      },
+      {
+        "category": "product_packaging_catalog",
+        "url": "https://images.unsplash.com/photo-1614036634955-ae5e90f9b9eb?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzB8MHwxfHNlYXJjaHwyfHxjb21tZXJjaWFsJTIwcHJpbnRpbmclMjBtYWNoaW5lJTIwcHJpbnQlMjBzaG9wJTIwcHJvZHVjdGlvbiUyMHBhcGVyJTIwY2F0YWxvZyUyMHByb2R1Y3RzJTIwcGFja2FnaW5nJTIwZGVzaWdufGVufDB8fHx8MTc5MDE4NjAxM3ww&ixlib=rb-4.1.0&q=85",
+        "description": "Printed product packaging sample"
+      }
+    ]
+  },
+  "testing_and_accessibility": {
+    "data_testid_convention": "kebab-case, role-based, explicit for all buttons, tabs, forms, rows, status-badges, and inputs.",
+    "examples": [
+      "data-testid=\"sidebar-nav-dashboard\"",
+      "data-testid=\"sidebar-nav-production-queue\"",
+      "data-testid=\"kpi-card-total-orders\"",
+      "data-testid=\"kpi-card-in-production\"",
+      "data-testid=\"queue-tab-all\"",
+      "data-testid=\"queue-tab-running\"",
+      "data-testid=\"production-table-row-ord-1001\"",
+      "data-testid=\"action-import-recipe-button\"",
+      "data-testid=\"theme-toggle-button\"",
+      "data-testid=\"new-order-button\""
+    ]
+  },
+  "instructions_to_main_agent": [
+    "Build a feature-complete, interactive SaaS dashboard following this exact layout and visual design system.",
+    "Implement Lucide React icons for all sidebar navigation links, status indicators, and action triggers.",
+    "Include a global state / mock dataset for real-time order status updates, filterable tabs, modal dialogs for recipe import and new order creation.",
+    "Ensure full support for dark and light theme switching with seamless Tailwind classes.",
+    "Provide clear data-testid attributes on all interactive elements across every tab, table row, and modal button."
+  ]
+}
