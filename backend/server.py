@@ -14,6 +14,7 @@ from typing import List, Optional, Any
 import uuid
 from datetime import datetime, timezone, date, timedelta
 from production import build_router as build_production_router, seed_production, EDGE_HEARTBEAT_TIMEOUT_S
+from ai_assistant import build_ai_router
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -914,6 +915,7 @@ async def seed():
 
 app.include_router(api_router)
 app.include_router(build_production_router(db))
+app.include_router(build_ai_router(db))
 
 app.add_middleware(
     CORSMiddleware,

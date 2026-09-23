@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { Toaster } from "sonner";
 import { Layout } from "@/components/Layout";
 import Dashboard from "@/pages/Dashboard";
+import Assistant from "@/pages/Assistant";
 import Orders from "@/pages/Orders";
 import ProductionQueue from "@/pages/ProductionQueue";
 import ProductionEngine from "@/pages/ProductionEngine";
@@ -29,6 +30,7 @@ function App() {
       <Routes>
         <Route element={<Layout />}>
           <Route path="/" element={<Dashboard />} />
+          <Route path="/assistant" element={<Assistant />} />
           <Route path="/orders" element={<Orders />} />
           <Route path="/production-queue" element={<ProductionQueue />} />
           <Route path="/production" element={<ProductionEngine />} />

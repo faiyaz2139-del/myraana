@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, ClipboardList, ListChecks, AlertTriangle, Package, BookOpen,
   Workflow, Cpu, Radio, FileImage, Library, ScrollText, BarChart3, Settings,
-  MapPin, Users, Building2, Factory, Activity,
+  MapPin, Users, Building2, Factory, Activity, Sparkles,
 } from "lucide-react";
 
 export const NAV_SECTIONS = [
@@ -9,6 +9,7 @@ export const NAV_SECTIONS = [
     title: "Core Operational",
     items: [
       { label: "Dashboard", to: "/", icon: LayoutDashboard, id: "dashboard" },
+      { label: "AI Assistant", to: "/assistant", icon: Sparkles, id: "assistant" },
       { label: "Orders", to: "/orders", icon: ClipboardList, id: "orders" },
       { label: "Production Queue", to: "/production-queue", icon: ListChecks, id: "production-queue" },
       { label: "Production Engine", to: "/production", icon: Factory, id: "production" },
