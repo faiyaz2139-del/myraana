@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from typing import List, Optional, Any
 import uuid
 from datetime import datetime, timezone, date
+from production import build_router as build_production_router, seed_production
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -112,6 +113,15 @@ class Recipe(BaseModel):
     processes: List[str] = []
     steps: List[str] = []
     source: str = "manual"  # manual, sop, pdf, chat, ai
+    status: str = "DRAFT"   # DRAFT | ACTIVE (production recipes)
+    review_status: str = "OK"  # OK | CONFIGURATION_REQUIRED | REVIEW_REQUIRED
+    version: str = "v1"
+    recipe_id: str = ""
+    product_code: str = ""
+    tenant: str = "Print2Go"
+    location: str = ""
+    provenance: dict = {}
+    extraction_model: str = ""
     created_at: str = Field(default_factory=now_iso)
 
 
@@ -334,19 +344,36 @@ async def import_recipe(payload: RecipeImportRequest):
         else:
             raise HTTPException(500, "AI returned unparseable output")
 
+    # AI may ONLY create DRAFT recipes — it can never activate production.
+    materials = parsed.get("materials", []) or []
+    machines = parsed.get("machines", []) or []
+    processes = parsed.get("processes", []) or []
+    steps = parsed.get("steps", []) or []
+    # production-critical values must be present, else flag for human configuration
+    missing = [k for k, v in {"materials": materials, "machines": machines, "steps": steps}.items() if not v]
+    review_status = "OK"
+    if missing:
+        review_status = "CONFIGURATION_REQUIRED"
+    elif not parsed.get("name") or not parsed.get("product"):
+        review_status = "REVIEW_REQUIRED"
+
     recipe = Recipe(
         name=parsed.get("name", "Untitled Recipe"),
         product=parsed.get("product", ""),
         description=parsed.get("description", ""),
-        materials=parsed.get("materials", []) or [],
-        machines=parsed.get("machines", []) or [],
-        processes=parsed.get("processes", []) or [],
-        steps=parsed.get("steps", []) or [],
+        materials=materials,
+        machines=machines,
+        processes=processes,
+        steps=steps,
         source=payload.source_type,
+        status="DRAFT",  # never ACTIVE from AI
+        review_status=review_status,
+        provenance={"source_type": payload.source_type, "imported_at": now_iso(), "missing_fields": missing},
+        extraction_model="openai/gpt-5.4",
     )
     if payload.save:
         await insert_doc("recipes", recipe)
-        await log_audit("AI imported recipe", recipe.name, "recipe")
+        await log_audit("AI imported DRAFT recipe", recipe.name, "recipe")
     return recipe.model_dump()
 
 
@@ -630,6 +657,7 @@ async def seed():
 
 
 app.include_router(api_router)
+app.include_router(build_production_router(db))
 
 app.add_middleware(
     CORSMiddleware,
@@ -643,6 +671,7 @@ app.add_middleware(
 @app.on_event("startup")
 async def startup():
     await seed()
+    await seed_production(db)
 
 
 @app.on_event("shutdown")

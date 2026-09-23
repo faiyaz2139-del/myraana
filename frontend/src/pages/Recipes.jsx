@@ -77,8 +77,11 @@ export default function Recipes() {
             <SectionCard key={r.id} className="p-5 group cursor-pointer hover:border-blue-500 transition-colors" data-testid={`recipe-card-${r.id}`} onClick={() => setDetail(r)}>
               <div className="flex items-start justify-between">
                 <div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <p className="font-bold text-slate-800 dark:text-slate-100">{r.name}</p>
+                    {r.status === "ACTIVE"
+                      ? <span data-testid={`recipe-status-${r.id}`} className="text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 rounded px-1.5 py-0.5">ACTIVE</span>
+                      : <span data-testid={`recipe-status-${r.id}`} className={`text-[10px] font-bold rounded px-1.5 py-0.5 ${r.review_status === "CONFIGURATION_REQUIRED" ? "bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-400" : r.review_status === "REVIEW_REQUIRED" ? "bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-400" : "bg-slate-100 dark:bg-slate-800 text-slate-500"}`}>{r.review_status && r.review_status !== "OK" ? r.review_status : "DRAFT"}</span>}
                     {r.source === "ai" && <span className="text-[10px] font-bold bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400 rounded px-1.5 py-0.5 inline-flex items-center gap-1"><Sparkles className="h-3 w-3" />AI</span>}
                   </div>
                   <p className="text-xs text-slate-400 mt-0.5">{r.product}</p>
@@ -101,7 +104,7 @@ export default function Recipes() {
         <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto" data-testid="recipe-import-dialog">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2"><Sparkles className="h-5 w-5 text-blue-600" /> AI Recipe Import</DialogTitle>
-            <DialogDescription>Paste an SOP, document text or chat description. AI will structure it into a production recipe.</DialogDescription>
+            <DialogDescription>Paste an SOP, document text or chat description. AI structures it into a <span className="font-semibold">DRAFT</span> recipe — AI can never activate a production recipe.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-1">
             <div className="grid grid-cols-2 gap-4">
@@ -148,7 +151,7 @@ export default function Recipes() {
                     <ol className="list-decimal list-inside space-y-1 text-sm text-slate-600 dark:text-slate-300">{preview.steps.map((s, i) => <li key={i}>{s}</li>)}</ol>
                   </div>
                 )}
-                <p className="text-xs text-emerald-600 font-medium">✓ Saved to your recipe library</p>
+                <p className="text-xs text-amber-600 font-medium" data-testid="import-draft-note">Saved as DRAFT{preview.review_status && preview.review_status !== "OK" ? ` · ${preview.review_status}` : ""} — human approval required to activate for production.</p>
               </div>
             )}
           </div>

@@ -5,6 +5,7 @@ import { Layout } from "@/components/Layout";
 import Dashboard from "@/pages/Dashboard";
 import Orders from "@/pages/Orders";
 import ProductionQueue from "@/pages/ProductionQueue";
+import ProductionEngine from "@/pages/ProductionEngine";
 import Exceptions from "@/pages/Exceptions";
 import Products from "@/pages/Products";
 import Recipes from "@/pages/Recipes";
@@ -29,6 +30,7 @@ function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/orders" element={<Orders />} />
           <Route path="/production-queue" element={<ProductionQueue />} />
+          <Route path="/production" element={<ProductionEngine />} />
           <Route path="/exceptions" element={<Exceptions />} />
           <Route path="/products" element={<Products />} />
           <Route path="/recipes" element={<Recipes />} />
