@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { PageHeader } from "@/components/Shared";
-import { Sparkles, Send, Plus, Bot, User, Loader2 } from "lucide-react";
+import { Sparkles, Send, Plus, Bot, User, Loader2, ShieldCheck } from "lucide-react";
 
 const BACKEND = process.env.REACT_APP_BACKEND_URL;
 const SESSION_KEY = "p2g-assistant-session";
@@ -50,6 +50,8 @@ export default function Assistant() {
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [streamText, setStreamText] = useState("");
+  const [scope, setScope] = useState(null);
+  const [meta, setMeta] = useState(null);
   const scrollRef = useRef(null);
 
   useEffect(() => {
@@ -59,6 +61,7 @@ export default function Assistant() {
     fetch(`${BACKEND}/api/assistant/providers`).then((r) => r.json()).then((d) => {
       setProviders(d.providers || []);
       setProvider(d.default || "anthropic");
+      setScope(d.scope || null);
     }).catch(() => {});
     fetch(`${BACKEND}/api/assistant/history?session_id=${sid}`).then((r) => r.json()).then((h) => setMessages(h || [])).catch(() => {});
   }, []);
@@ -102,6 +105,7 @@ export default function Assistant() {
           const t = line.trim();
           if (!t.startsWith("data:")) continue;
           const data = JSON.parse(t.slice(5).trim());
+          if (data.meta) setMeta(data.meta);
           if (data.delta) { acc += data.delta; setStreamText(acc); }
           if (data.error) { acc = acc || `⚠️ ${data.error}`; setStreamText(acc); }
         }
@@ -153,6 +157,13 @@ export default function Assistant() {
             </button>
           );
         })}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-3 text-[11px] text-slate-400" data-testid="assistant-grounding-bar">
+        <span className="inline-flex items-center gap-1 font-semibold text-emerald-600 dark:text-emerald-500"><ShieldCheck className="h-3.5 w-3.5" /> Read-only · grounded in live data</span>
+        {scope && <span>Scope: <strong className="text-slate-500 dark:text-slate-300">{scope.tenant} / {scope.location}</strong></span>}
+        {meta?.data_refreshed && <span data-testid="assistant-data-refreshed">Data refreshed: {new Date(meta.data_refreshed).toLocaleTimeString()}</span>}
+        {meta?.flagged_intent && <span className="text-amber-600 dark:text-amber-500 font-semibold">Action intent “{meta.flagged_intent}” refused — requires human approval</span>}
       </div>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 sm:p-6 space-y-5" data-testid="assistant-messages">
