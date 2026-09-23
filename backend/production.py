@@ -983,8 +983,9 @@ def build_router(db):
         return "REAL_ONLINE" if real_online else ("SIMULATED_ONLINE" if (recent and not real_online) else "OFFLINE"), real_online
 
     @router.get("/edge-v2/agents")
-    async def edge_v2_agents():
-        agents = await db.prod_edge_agents.find({}, {"_id": 0, "token": 0, "signing_secret": 0}).to_list(100)
+    async def edge_v2_agents(include_test: bool = False):
+        q = {} if include_test else {"is_test": {"$ne": True}}
+        agents = await db.prod_edge_agents.find(q, {"_id": 0, "token": 0, "signing_secret": 0}).to_list(100)
         for a in agents:
             live, real_online = _v2_live(a)
             a["live_state"] = live

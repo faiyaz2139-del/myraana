@@ -6,9 +6,10 @@ import { SectionCard, Loader } from "@/components/Shared";
 import { QueueTable } from "@/components/QueueTable";
 import { OrderDialog } from "@/components/OrderDialog";
 import { Button } from "@/components/ui/button";
+import { DEVICE_STATUS, STATUS_BANNER } from "@/lib/constants";
 import {
   FileText, Printer, AlertTriangle, CheckCircle2, TrendingUp, Plus, CalendarDays,
-  Package, BookOpen, Upload, Cpu, ArrowRight, Wifi, ChevronRight, Hand,
+  Package, BookOpen, Upload, Cpu, ArrowRight, Wifi, ChevronRight, Hand, FlaskConical,
 } from "lucide-react";
 
 const KPI_META = [
@@ -33,19 +34,22 @@ export default function Dashboard() {
 
   const { data: stats, isLoading: sl } = useCollection("stats", "/dashboard/stats");
   const { data: orders = [], isLoading: ol } = useCollection("orders", "/orders");
-  const { data: devices = [] } = useCollection("devices", "/system-status");
+  const { data: sys } = useCollection("system-status", "/system-status");
   const { data: exceptions = [] } = useCollection("exceptions", "/exceptions");
 
   const refresh = () => qc.invalidateQueries();
   const today = new Date().toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" });
   const openExc = exceptions.filter((e) => !e.resolved).slice(0, 4);
+  const devices = sys?.items || [];
+  const level = sys?.level || "warn";
+  const fmtChecked = (iso) => (iso ? new Date(iso).toLocaleString() : "never");
 
   return (
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p2g-fade-up">
         <div>
           <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 dark:text-slate-50 flex items-center gap-2">
-            Welcome back, Mohammad <Hand className="h-6 w-6 text-amber-500" />
+            Welcome to Print2Go OS <Hand className="h-6 w-6 text-amber-500" />
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Here's what's happening at Print2Go London.</p>
         </div>
@@ -119,28 +123,39 @@ export default function Dashboard() {
           <SectionCard className="p-5">
             <div className="flex items-center gap-2 mb-4">
               <span className="relative flex h-2.5 w-2.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
+                {level === "ok" && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />}
+                <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${level === "ok" ? "bg-emerald-500" : level === "critical" ? "bg-rose-500" : "bg-amber-500"}`} />
               </span>
               <h2 className="text-base font-bold tracking-tight">System Status</h2>
             </div>
-            <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/50 px-3 py-2.5 mb-3">
-              <p className="text-sm font-bold text-emerald-700 dark:text-emerald-400">All Systems Operational</p>
-              <p className="text-[11px] text-emerald-600/70 dark:text-emerald-500/70">Last updated: just now</p>
+            <div data-testid="system-status-summary" className={`rounded-lg border px-3 py-2.5 mb-3 ${STATUS_BANNER[level] || STATUS_BANNER.warn}`}>
+              <p className="text-sm font-bold">{sys?.summary || "Checking systems…"}</p>
+              <p className="text-[11px] opacity-70">Updated {fmtChecked(sys?.generated_at)}</p>
+            </div>
+            <div className="rounded-lg bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 px-3 py-2 mb-3 flex items-start gap-2" data-testid="production-mode-note">
+              <FlaskConical className="h-4 w-4 text-slate-500 shrink-0 mt-0.5" />
+              <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-snug">{sys?.production_note || "Simulation only — physical printing unavailable."}</p>
             </div>
             <div className="space-y-1">
-              {devices.map((d) => (
-                <div key={d.id} className="flex items-center justify-between py-2 border-b border-slate-100 dark:border-slate-800/60 last:border-0">
-                  <div className="flex items-center gap-2.5">
-                    <Wifi className="h-4 w-4 text-slate-400" />
-                    <span className="text-sm text-slate-700 dark:text-slate-300">{d.name}</span>
+              {devices.map((d) => {
+                const meta = DEVICE_STATUS[d.status] || DEVICE_STATUS.UNKNOWN;
+                return (
+                  <div key={d.id} data-testid={`system-status-item-${d.id}`} className="flex items-center justify-between py-2 border-b border-slate-100 dark:border-slate-800/60 last:border-0">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <Wifi className="h-4 w-4 text-slate-400 shrink-0" />
+                      <div className="min-w-0">
+                        <span className="text-sm text-slate-700 dark:text-slate-300 block truncate">{d.name}</span>
+                        <span className="text-[10px] text-slate-400">{d.last_checked ? `checked ${fmtChecked(d.last_checked)}` : d.evidence}</span>
+                      </div>
+                    </div>
+                    <span className={`text-xs font-semibold inline-flex items-center gap-1.5 shrink-0 ${meta.cls}`}>
+                      <span className={`h-1.5 w-1.5 rounded-full ${meta.dot}`} />
+                      {meta.label}
+                    </span>
                   </div>
-                  <span className={`text-xs font-semibold inline-flex items-center gap-1.5 ${d.status === "online" ? "text-emerald-600" : "text-slate-400"}`}>
-                    <span className={`h-1.5 w-1.5 rounded-full ${d.status === "online" ? "bg-emerald-500" : "bg-slate-300"}`} />
-                    {d.status === "online" ? "Online" : "Offline"}
-                  </span>
-                </div>
-              ))}
+                );
+              })}
+              {devices.length === 0 && <p className="text-sm text-slate-400 py-3 text-center">No status data.</p>}
             </div>
           </SectionCard>
 

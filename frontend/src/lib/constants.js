@@ -80,3 +80,29 @@ export function timeAgo(iso) {
   const d = new Date(iso);
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
+
+export function formatCurrency(value, currency = "CAD") {
+  const n = Number(value || 0);
+  try {
+    return new Intl.NumberFormat("en-CA", { style: "currency", currency }).format(n);
+  } catch {
+    return `$${n.toFixed(2)}`;
+  }
+}
+
+// Authoritative device/agent status vocabulary (shared across screens)
+export const DEVICE_STATUS = {
+  ONLINE: { label: "Online", cls: "text-emerald-600", dot: "bg-emerald-500" },
+  OFFLINE: { label: "Offline", cls: "text-slate-400", dot: "bg-slate-300" },
+  STALE: { label: "Stale", cls: "text-amber-600", dot: "bg-amber-500" },
+  SIMULATED: { label: "Simulated", cls: "text-amber-600", dot: "bg-amber-500" },
+  UNREACHABLE: { label: "Unreachable", cls: "text-rose-600", dot: "bg-rose-500" },
+  UNKNOWN: { label: "Unknown", cls: "text-slate-400", dot: "bg-slate-300" },
+  NOT_CONFIGURED: { label: "Not configured", cls: "text-slate-400", dot: "bg-slate-300" },
+};
+
+export const STATUS_BANNER = {
+  ok: "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-900/50 text-emerald-700 dark:text-emerald-400",
+  warn: "bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900/50 text-amber-700 dark:text-amber-400",
+  critical: "bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-900/50 text-rose-700 dark:text-rose-400",
+};

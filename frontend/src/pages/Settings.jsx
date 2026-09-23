@@ -18,7 +18,7 @@ export default function Settings() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5"><Label>Company name</Label><Input defaultValue="Print2Go" /></div>
             <div className="space-y-1.5"><Label>Default location</Label><Input defaultValue="Print2Go London" /></div>
-            <div className="space-y-1.5"><Label>Currency</Label><Input defaultValue="GBP (£)" /></div>
+            <div className="space-y-1.5"><Label>Currency</Label><Input defaultValue="CAD ($)" /></div>
             <div className="space-y-1.5"><Label>Timezone</Label><Input defaultValue="Europe/London" /></div>
           </div>
           <Button className="mt-4 bg-blue-600 hover:bg-blue-700" onClick={() => toast.success("Settings saved")} data-testid="save-settings">Save changes</Button>

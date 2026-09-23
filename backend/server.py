@@ -3,14 +3,15 @@ from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
+import re
 import json
 import logging
 from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional, Any
 import uuid
-from datetime import datetime, timezone, date
-from production import build_router as build_production_router, seed_production
+from datetime import datetime, timezone, date, timedelta
+from production import build_router as build_production_router, seed_production, EDGE_HEARTBEAT_TIMEOUT_S
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -197,6 +198,45 @@ async def list_docs(collection, query=None, sort_field="created_at", limit=1000)
     return docs
 
 
+# ---------------------- Authoritative status / reconciliation ----------------------
+def compute_agent_state(a):
+    """Single authoritative agent-availability policy: derived from real HMAC heartbeats."""
+    if not a:
+        return "NOT_CONFIGURED"
+    hb = a.get("last_heartbeat")
+    recent = False
+    if hb:
+        try:
+            recent = datetime.now(timezone.utc) - datetime.fromisoformat(hb) <= timedelta(seconds=EDGE_HEARTBEAT_TIMEOUT_S)
+        except Exception:
+            recent = False
+    real_online = bool(a.get("real_online") and a.get("agent_kind") == "REAL" and recent)
+    if real_online:
+        return "ONLINE"
+    if recent:
+        return "SIMULATED"   # a non-authenticated / mock heartbeat is never truly ONLINE
+    if hb:
+        return "STALE"
+    return "OFFLINE"
+
+
+async def reconcile_exceptions(db):
+    """Canonical rule: an order needs attention iff it has >=1 unresolved exception record.
+    Keeps order.status in sync without ever auto-marking an order Ready/Completed."""
+    open_exc = await db.exceptions.find({"resolved": {"$ne": True}}, {"_id": 0}).to_list(2000)
+    open_refs = {e.get("order_ref") for e in open_exc if e.get("order_ref")}
+    # orders with an open exception -> exception status (preserve current_step)
+    for ref in open_refs:
+        await db.orders.update_many(
+            {"order_number": ref, "status": {"$ne": "exception"}},
+            {"$set": {"status": "exception", "updated_at": now_iso()}})
+    # orders flagged exception but with no open exception -> recompute to a safe non-ready state
+    async for o in db.orders.find({"status": "exception"}, {"_id": 0}):
+        if o.get("order_number") not in open_refs:
+            await db.orders.update_one({"id": o["id"]}, {"$set": {
+                "status": "waiting", "current_step": "Awaiting review", "updated_at": now_iso()}})
+
+
 # ---------------------- Dashboard ----------------------
 @api_router.get("/")
 async def root():
@@ -205,10 +245,18 @@ async def root():
 
 @api_router.get("/dashboard/stats")
 async def dashboard_stats():
-    orders = await list_docs("orders")
+    await reconcile_exceptions(db)
+    orders = await db.orders.find({"is_test": {"$ne": True}}, {"_id": 0}).to_list(2000)
+    non_test_refs = {o["order_number"] for o in orders}
     total = len(orders)
     in_production = len([o for o in orders if o["status"] == "running"])
-    need_attention = len([o for o in orders if o["status"] == "exception"])
+
+    # need_attention derives from the SAME source as the Exceptions page: unresolved exception records
+    open_exc = await db.exceptions.find({"resolved": {"$ne": True}}, {"_id": 0}).to_list(2000)
+    open_exc = [e for e in open_exc if not e.get("is_test") and e.get("order_ref") in non_test_refs]
+    attention_orders = {e["order_ref"] for e in open_exc}
+    need_attention = len(attention_orders)
+
     today = date.today().isoformat()
     completed_today = len([o for o in orders if o["status"] == "completed" and o.get("updated_at", "").startswith(today)])
     if completed_today == 0:
@@ -216,21 +264,75 @@ async def dashboard_stats():
     return {
         "total_orders": {"value": total, "trend": 12, "direction": "up"},
         "in_production": {"value": in_production, "trend": 33, "direction": "up"},
-        "need_attention": {"value": need_attention, "trend": 200, "direction": "up"},
+        "need_attention": {"value": need_attention, "trend": 0, "direction": "up"},
         "completed_today": {"value": completed_today, "trend": 50, "direction": "up"},
+        "open_exceptions": len(open_exc),
     }
 
 
 @api_router.get("/system-status")
 async def system_status():
-    devices = await list_docs("devices")
-    return devices
+    """Single authoritative status source shared by Dashboard, Machines, Edge Agents & Diagnostics.
+    Agent availability comes from real heartbeats; a device is only ONLINE with fresh device-specific evidence."""
+    agent = await db.prod_edge_agents.find_one({"agent_id": "P2G-LONDON-EDGE-01"}, {"_id": 0})
+    agent_state = compute_agent_state(agent)
+    agent_online = agent_state == "ONLINE"
+    agent_hb = (agent or {}).get("last_heartbeat")
+
+    # Device (PX300 / London BC) status requires fresh evidence from a connected agent's discovery
+    disc = None
+    if agent_online:
+        disc = await db.prod_edge_actions.find_one(
+            {"agent_id": "P2G-LONDON-EDGE-01", "action": "DISCOVER_CAPABILITIES", "status": "SUCCEEDED"},
+            {"_id": 0}, sort=[("result_at", -1)])
+
+    if not agent_online:
+        px_status, px_checked, px_src = "UNKNOWN", None, "no connected agent"
+    elif not disc:
+        px_status, px_checked, px_src = "UNKNOWN", None, "no discovery evidence"
+    else:
+        reach = (((disc.get("result") or {}).get("report") or {}).get("px300") or {}).get("reachable", "UNKNOWN")
+        px_checked = disc.get("result_at")
+        px_status = "ONLINE" if reach is True else ("UNREACHABLE" if reach is False else "UNKNOWN")
+        px_src = "agent TCP probe (read-only)"
+
+    items = [
+        {"id": "loc-london", "name": "Print2Go London (Location)", "type": "location",
+         "status": "ONLINE" if agent_online else "UNKNOWN", "last_checked": agent_hb,
+         "evidence": "edge agent heartbeat"},
+        {"id": "agent-london-01", "name": "Edge Agent (P2G-LONDON-EDGE-01)", "type": "agent",
+         "status": agent_state, "last_checked": agent_hb,
+         "evidence": "HMAC-authenticated heartbeat (30s window)"},
+        {"id": "fiery-px300", "name": "Fiery PX300", "type": "machine",
+         "status": px_status, "last_checked": px_checked, "evidence": px_src},
+        {"id": "london-bc", "name": "London BC Imposition", "type": "integration",
+         "status": px_status if agent_online else "UNKNOWN", "last_checked": px_checked,
+         "evidence": "requires agent discovery"},
+    ]
+    online = sum(1 for i in items if i["status"] == "ONLINE")
+    total = len(items)
+    if agent_online and online == total:
+        summary, level = "All Systems Operational", "ok"
+    elif not agent_online:
+        summary, level = "Edge Agent offline — device status unknown", "critical"
+    else:
+        summary, level = "Partially operational", "warn"
+    return {
+        "items": items, "summary": summary, "level": level, "online": online, "total": total,
+        "production_mode": "SIMULATION",
+        "production_note": "Simulation only — physical printing unavailable (REAL_FIERY_BACKEND = NOT_IMPLEMENTED).",
+        "generated_at": now_iso(),
+    }
 
 
 # ---------------------- Orders ----------------------
 @api_router.get("/orders")
-async def get_orders(status: Optional[str] = None):
-    q = {"status": status} if status and status != "all" else {}
+async def get_orders(status: Optional[str] = None, include_test: bool = False):
+    q = {}
+    if status and status != "all":
+        q["status"] = status
+    if not include_test:
+        q["is_test"] = {"$ne": True}
     docs = await db.orders.find(q, {"_id": 0}).sort("updated_at", -1).to_list(1000)
     return docs
 
@@ -267,8 +369,9 @@ async def delete_order(order_id: str):
 
 # ---------------------- Products ----------------------
 @api_router.get("/products")
-async def get_products():
-    return await db.products.find({}, {"_id": 0}).sort("created_at", -1).to_list(1000)
+async def get_products(include_test: bool = False):
+    q = {} if include_test else {"is_test": {"$ne": True}}
+    return await db.products.find(q, {"_id": 0}).sort("created_at", -1).to_list(1000)
 
 
 @api_router.post("/products")
@@ -427,14 +530,54 @@ async def get_sops():
 
 
 @api_router.get("/exceptions")
-async def get_exceptions():
-    return await db.exceptions.find({}, {"_id": 0}).sort("created_at", -1).to_list(1000)
+async def get_exceptions(include_test: bool = False):
+    q = {} if include_test else {"is_test": {"$ne": True}}
+    return await db.exceptions.find(q, {"_id": 0}).sort("created_at", -1).to_list(1000)
 
 
 @api_router.post("/exceptions/{exc_id}/resolve")
 async def resolve_exception(exc_id: str):
-    await db.exceptions.update_one({"id": exc_id}, {"$set": {"resolved": True}})
+    exc = await db.exceptions.find_one({"id": exc_id}, {"_id": 0})
+    await db.exceptions.update_one({"id": exc_id}, {"$set": {"resolved": True, "resolved_at": now_iso()}})
+    if exc:
+        ref = exc.get("order_ref")
+        remaining = await db.exceptions.count_documents({"order_ref": ref, "resolved": {"$ne": True}})
+        if remaining == 0 and ref:
+            # recompute order state — never auto-mark Ready/Completed; bypasses no remaining gate
+            await db.orders.update_one(
+                {"order_number": ref, "status": "exception"},
+                {"$set": {"status": "waiting", "current_step": "Awaiting review", "updated_at": now_iso()}})
+        await log_audit("Resolved exception", ref or exc_id, "exception")
     return {"ok": True}
+
+
+@api_router.get("/search")
+async def search(q: str = ""):
+    term = (q or "").strip().lstrip("#").strip()
+    if not term:
+        return {"query": q, "count": 0, "results": []}
+    rx = {"$regex": re.escape(term), "$options": "i"}
+    results = []
+    ors = await db.orders.find({"is_test": {"$ne": True}, "$or": [
+        {"order_number": rx}, {"product_name": rx}, {"customer": rx}]}, {"_id": 0}).sort("updated_at", -1).to_list(15)
+    for o in ors:
+        results.append({"type": "order", "id": o["id"],
+                        "title": f'{o["order_number"]} · {o["product_name"]}',
+                        "subtitle": f'{o.get("customer", "")} · {o.get("status", "")}'.strip(" ·"),
+                        "route": f'/orders?q={o["order_number"].lstrip("#")}'})
+    ps = await db.products.find({"is_test": {"$ne": True}, "name": rx}, {"_id": 0}).to_list(15)
+    for p in ps:
+        results.append({"type": "product", "id": p["id"], "title": p["name"],
+                        "subtitle": p.get("category", ""), "route": "/products"})
+    rs = await db.recipes.find({"$or": [{"name": rx}, {"product": rx}]}, {"_id": 0}).to_list(15)
+    for r in rs:
+        results.append({"type": "recipe", "id": r["id"], "title": r["name"],
+                        "subtitle": r.get("product", ""), "route": "/recipes"})
+    fs = await db.files.find({"$or": [{"name": rx}, {"order_ref": rx}]}, {"_id": 0}).to_list(15)
+    for f in fs:
+        results.append({"type": "file", "id": f["id"], "title": f["name"],
+                        "subtitle": f.get("order_ref", ""), "route": "/files"})
+    return {"query": q, "count": len(results), "results": results}
 
 
 @api_router.get("/audit-logs")
@@ -488,7 +631,7 @@ async def log_audit(action: str, entity_name: str, entity_type: str):
         "action": action,
         "entity": entity_name,
         "entity_type": entity_type,
-        "user": "Mohammad Amin",
+        "user": "demo-user (no auth)",
         "timestamp": now_iso(),
     })
 
@@ -668,10 +811,32 @@ app.add_middleware(
 )
 
 
+async def migrate(db):
+    """Idempotent data migrations for existing (already-seeded/production) databases."""
+    # Issue 4 — London is in Ontario, Canada; use CAD
+    await db.locations.update_one(
+        {"name": "Print2Go London"},
+        {"$set": {"city": "London, ON, Canada", "country": "Canada", "currency": "CAD"}})
+    # Issue 5 — flag known test/demo artifacts (metadata, never deleted, audit preserved)
+    await db.orders.update_many(
+        {"$or": [{"product_name": {"$regex": "^TEST_UI", "$options": "i"}},
+                 {"order_number": {"$regex": "TEST", "$options": "i"}},
+                 {"customer": {"$regex": "^TEST", "$options": "i"}}]},
+        {"$set": {"is_test": True}})
+    await db.products.update_many(
+        {"name": {"$regex": "^TEST_UI", "$options": "i"}}, {"$set": {"is_test": True}})
+    for coll in ("edge_agents", "prod_edge_agents"):
+        await db[coll].update_many(
+            {"agent_id": {"$regex": "^TEST-EDGE", "$options": "i"}}, {"$set": {"is_test": True}})
+    # Issue 2 — align order/exception state at boot
+    await reconcile_exceptions(db)
+
+
 @app.on_event("startup")
 async def startup():
     await seed()
     await seed_production(db)
+    await migrate(db)
 
 
 @app.on_event("shutdown")

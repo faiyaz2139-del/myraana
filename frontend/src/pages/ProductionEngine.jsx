@@ -61,7 +61,7 @@ export default function ProductionEngine() {
     refresh();
   };
   const advance = async () => {
-    const body = { use_mock_fiery: useMock, actor: "Mohammad Amin" };
+    const body = { use_mock_fiery: useMock, actor: "demo-operator" };
     if (fault) body.simulate = fault;
     const { data } = await api.post(`/production/jobs/${selected}/advance`, body);
     setLastPolicy(data.policy);
@@ -71,7 +71,7 @@ export default function ProductionEngine() {
     refresh();
   };
   const authorize = async () => {
-    const { data } = await api.post(`/production/jobs/${selected}/authorize`, { actor: "Mohammad Amin" });
+    const { data } = await api.post(`/production/jobs/${selected}/authorize`, { actor: "demo-operator" });
     setLastPolicy(data.policy);
     toast.success("Production authorized (PRINT remains locked in V0.2)");
     refresh();
