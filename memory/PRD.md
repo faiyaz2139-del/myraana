@@ -127,3 +127,12 @@ Hardened the multi-provider assistant for future real-production safety (UI pres
 - Verified: testing agent iteration_7 → backend 100% (33/33 hardening + 10/10 existing), frontend 100%, no issues. 18 attack cases (6 prompts × 3 providers) all refuse with no execution.
 - **Known gap**: no end-user auth (open by design) — per-user RBAC + authenticated tenant/location binding + unauthenticated-access blocking remain pending real auth. Assistant hard-scoping is the current mitigation.
 - **Deployment**: preview only — redeploy to push to production (myraana.com).
+
+## V0.8 — Low-credit usability pass (2026-06)
+Made everyday use understandable without training (UI reused, no redesign, no new deps).
+- Assistant renamed **Print2Go Assistant**; model switcher + all provider/model names hidden (backend multi-provider intact, still uses default provider); Markdown rendering upgraded (bold/italic/code/bullets/numbered/headings); grounding bar simplified to plain language.
+- Dashboard **Start a job / See my jobs / Get help** quick-action row.
+- **Connect my shop** (renamed Diagnostics): plain what/what-to-do/one-action; not-connected shows exact steps + **Get pairing code** (reuses `/edge-v2/enrollment-tokens`); once paired auto-runs read-only DISCOVER_CAPABILITIES; technical tiles+matrix hidden under **Show technical details**; never fabricates connectivity; read-only, never prints.
+- OrderDialog: auto-saved **drafts** (localStorage) restored on reopen, cleared on success; **duplicate-submit** prevented (in-flight guard + disabled button).
+- Verified: testing agent iteration_8 → backend 100%, frontend 100%, no issues (one non-blocking Radix a11y hint left as-is, out of scope). Desktop + mobile journeys checked.
+- **Deployment**: preview only — redeploy to push to production (myraana.com).

@@ -1,0 +1,30 @@
+{
+  "summary": "LOW-CREDIT usability pass (iteration 8) verified end-to-end. Backend regression: 7/7 pytest passed (dashboard/stats, system-status, assistant providers, assistant streaming chat, order CRUD single-create, enrollment token mint, edge agents). Frontend: dashboard quick-actions row present with qa-start-job (opens order-dialog), qa-see-jobs (navigates /orders), qa-get-help (navigates /assistant). Sidebar shows 'Print2Go Assistant' and 'Connect my shop'; 'AI Assistant' string absent. Assistant page title 'Print2Go Assistant', assistant-model-switcher ABSENT, no provider/model brand names (Claude/ChatGPT/Gemini/OpenAI/Anthropic/claude-sonnet/gpt-5) anywhere on the page. Streaming reply works and markdown renders as HTML (<strong>, <ul>, <ol> present; no literal '**' or leading '*'/'1.' in visible text). Grounding bar reads 'Answers use your live shop data' and 'Updated <time>' appears via assistant-data-refreshed after reply. Order draft: typing product name+qty, closing dialog, re-opening restored values from localStorage key p2g-order-draft; after successful create draft cleared; save button disables while saving; only ONE order created despite double-click (verified via /api/orders count). Diagnostics rebranded 'Connect my shop': not-connected state shown (edge OFFLINE), plain steps, get-pairing-code mints ENROLL-XXXX code, read-only/simulation warning visible, no print-trigger buttons, toggle-details reveals & hides tech-details+capability matrix correctly. Mobile (390x844): /assistant sends & receives reply; /diagnostics pairing code minted.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "OrderDialog", "issues": ["A11y console warning: 'Missing Description or aria-describedby for DialogContent' (non-blocking, radix a11y hint)"]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_lowcredit_regression.py",
+    "/app/test_reports/pytest/lowcredit_results.xml"
+  ],
+  "action_items": [
+    "Optional: add DialogDescription (or aria-describedby) to OrderDialog to silence Radix a11y warning."
+  ],
+  "critical_code_review_comments": [
+    "Assistant.jsx keeps `provider` state and posts it — this is fine as it uses backend default and is hidden from UI, but consider removing the field from the request body entirely so backend cannot be steered via crafted client requests (defense-in-depth).",
+    "OrderDialog draft: quantity stored as string in localStorage ('555') and restored as-is into input; Number() cast on submit handles it. OK.",
+    "Diagnostics.jsx auto-runs DISCOVER_CAPABILITIES once when online — read-only and idempotency_key set, safe."
+  ],
+  "updated_files": ["/app/backend/tests/test_lowcredit_regression.py", "/app/test_reports/iteration_8.json"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "Created and cleaned up one test order 'Draft Test Cards' during draft/duplicate test.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "All LOW-CREDIT UX requirements verified. Edge agent expected OFFLINE — 'Connect my shop' correctly shows not-connected state. Full hardening suite already covered in iteration_7; not re-run here.",
+  "rca of the issue": "N/A — no bugs found."
+}
