@@ -359,6 +359,14 @@ async def system_status():
         px_status = "ONLINE" if reach is True else ("UNREACHABLE" if reach is False else "UNKNOWN")
         px_src = "agent TCP probe (read-only)"
 
+    # Fiery reachability + real-print capability come from the agent's heartbeat + discovery
+    hot_folder = bool((agent or {}).get("hot_folder_reachable")) and agent_online
+    fiery_reach = bool((agent or {}).get("fiery_reachable")) and agent_online
+    test_mode = (agent or {}).get("test_mode", True)
+    real_print_enabled = agent_online and (agent or {}).get("agent_kind") == "REAL" and hot_folder
+    if fiery_reach:
+        px_status = "ONLINE"; px_src = "agent Fiery probe"; px_checked = agent_hb
+
     items = [
         {"id": "loc-london", "name": "Print2Go London (Location)", "type": "location",
          "status": "ONLINE" if agent_online else "UNKNOWN", "last_checked": agent_hb,
@@ -368,22 +376,31 @@ async def system_status():
          "evidence": "HMAC-authenticated heartbeat (30s window)"},
         {"id": "fiery-px300", "name": "Fiery PX300", "type": "machine",
          "status": px_status, "last_checked": px_checked, "evidence": px_src},
-        {"id": "london-bc", "name": "London BC Imposition", "type": "integration",
-         "status": px_status if agent_online else "UNKNOWN", "last_checked": px_checked,
-         "evidence": "requires agent discovery"},
+        {"id": "hot-folder", "name": "Fiery Hot Folder (Jai BC)", "type": "integration",
+         "status": "ONLINE" if hot_folder else "UNKNOWN", "last_checked": agent_hb,
+         "evidence": (agent or {}).get("hot_folder_path") or "reported by agent when reachable"},
+        {"id": "real-print", "name": "Physical printing", "type": "capability",
+         "status": "ENABLED" if real_print_enabled else "SIMULATION",
+         "last_checked": agent_hb,
+         "evidence": ("Human-authorized jobs will print (1-copy TEST mode)" if (real_print_enabled and test_mode)
+                      else "Real printing active" if real_print_enabled
+                      else "MOCK — no physical output while agent/hot folder offline")},
     ]
     online = sum(1 for i in items if i["status"] == "ONLINE")
-    total = len(items)
-    if agent_online and online == total:
-        summary, level = "All Systems Operational", "ok"
+    total = sum(1 for i in items if i["type"] in ("location", "agent", "machine", "integration"))
+    if agent_online and real_print_enabled:
+        summary, level = ("Physical printing ready — 1-copy TEST mode" if test_mode else "Physical printing ready"), "ok"
     elif not agent_online:
-        summary, level = "Edge Agent offline — device status unknown", "critical"
+        summary, level = "Edge Agent offline — running in simulation (MOCK)", "critical"
     else:
-        summary, level = "Partially operational", "warn"
+        summary, level = "Agent online — Fiery/hot folder not confirmed (MOCK)", "warn"
     return {
         "items": items, "summary": summary, "level": level, "online": online, "total": total,
-        "production_mode": "SIMULATION",
-        "production_note": "Simulation only — physical printing unavailable (REAL_FIERY_BACKEND = NOT_IMPLEMENTED).",
+        "production_mode": "PHYSICAL" if real_print_enabled else "SIMULATION",
+        "real_print_enabled": real_print_enabled, "test_mode": test_mode,
+        "production_note": ("Physical printing is ENABLED for this agent." + (" First runs are limited to 1 copy (TEST mode)." if test_mode else "")
+                            if real_print_enabled
+                            else "Simulation only (MOCK) — physical printing unavailable until a real agent with a reachable Fiery Hot Folder is online."),
         "generated_at": now_iso(),
     }
 

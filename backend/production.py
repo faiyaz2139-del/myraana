@@ -19,6 +19,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Body, Query, Request, Header
+from fastapi.responses import Response
 from pydantic import BaseModel
 from pypdf import PdfReader, PdfWriter
 from pypdf.generic import RectangleObject, ContentStream, NameObject, DecodedStreamObject
@@ -64,6 +65,11 @@ WORKFLOW = [
     "PRODUCTION_AUTHORIZATION_REQUIRED", "PRODUCTION_AUTHORIZED",
 ]
 HUMAN_GATE_FROM = "PRODUCTION_AUTHORIZATION_REQUIRED"
+
+# Physical print lifecycle (runs AFTER the workflow reaches PRODUCTION_AUTHORIZED).
+# Kept separate from WORKFLOW so the deterministic state machine is untouched.
+PRINT_STATES = ["AUTHORIZED_HELD", "CLAIMED", "SENT_TO_FIERY", "PRINTING", "PRINTED", "PRINT_FAILED", "CANCELLED"]
+PRINT_ORDER = {"AUTHORIZED_HELD": 0, "CLAIMED": 1, "SENT_TO_FIERY": 2, "PRINTING": 3, "PRINTED": 4}
 
 STOP_CODES = {
     "WRONG_DIMENSIONS", "WRONG_ASPECT_RATIO", "MISSING_BACK", "UNSAFE_SAFE_AREA",
@@ -848,7 +854,17 @@ def build_router(db):
         if opts.ai_actor:
             await engine.audit(j, "AI", "AUTHORIZE_ATTEMPT", "DENY", ai_model="openai/gpt-5.4", result="AI_CANNOT_AUTHORIZE_PRODUCTION")
             raise HTTPException(403, "AI cannot authorize production")
-        return await engine.advance(j, opts, authorized=True)
+        res = await engine.advance(j, opts, authorized=True)
+        jj = await engine.get(job_id)
+        if jj["state"] == "PRODUCTION_AUTHORIZED":
+            await db.prod_jobs.update_one({"id": job_id}, {"$set": {
+                "print_state": "AUTHORIZED_HELD", "authorized_by": opts.actor or "human", "authorized_at": now_iso(),
+                "copies": jj.get("copies", 1), "claimed_by": None, "claim_token": None,
+                "cancel_requested": False, "dropped_at": None}})
+            jj = await engine.get(job_id)
+            await engine.audit(jj, opts.actor or "human", "PRINT_AUTHORIZED_HELD", "ALLOW",
+                               evidence={"note": "held for a real agent to claim; MOCK only if no agent online"})
+        return res
 
     @router.post("/jobs/{job_id}/policy-check")
     async def policy_check(job_id: str, opts: AdvanceOptions = Body(default=AdvanceOptions())):
@@ -1008,10 +1024,146 @@ def build_router(db):
     async def edge_v2_heartbeat(request: Request):
         agent = await authenticate_agent(request)  # only a REAL authenticated agent can beat
         real = agent.get("agent_kind") == "REAL"
-        await db.prod_edge_agents.update_one({"agent_id": agent["agent_id"]}, {"$set": {
-            "last_heartbeat": now_iso(), "state": "ONLINE",
-            "authenticated_real": True, "real_online": real}})
-        return {"agent_id": agent["agent_id"], "state": "ONLINE", "real_online": real, "ack": now_iso()}
+        try:
+            body = json.loads(await request.body() or b"{}")
+        except Exception:
+            body = {}
+        caps = body.get("capabilities", {}) or {}
+        updates = {"last_heartbeat": now_iso(), "state": "ONLINE",
+                   "authenticated_real": True, "real_online": real,
+                   "hot_folder_reachable": bool(caps.get("hot_folder_reachable")),
+                   "fiery_reachable": bool(caps.get("fiery_reachable")),
+                   "hot_folder_path": caps.get("hot_folder_path"),
+                   "fiery_ip": caps.get("fiery_ip"), "print_queue": caps.get("print_queue")}
+        await db.prod_edge_agents.update_one({"agent_id": agent["agent_id"]}, {"$set": updates})
+        a = await db.prod_edge_agents.find_one({"agent_id": agent["agent_id"]}, {"_id": 0})
+        test_mode = a.get("test_mode", True)  # first physical run defaults to 1-copy test mode
+        real_print_enabled = bool(real and updates["hot_folder_reachable"])
+        return {"agent_id": agent["agent_id"], "state": "ONLINE", "real_online": real,
+                "real_print_enabled": real_print_enabled, "test_mode": test_mode, "ack": now_iso()}
+
+    # ---------------- Physical print pipeline (agent-facing, outbound-only) ----------------
+    def _copies_for(agent, job):
+        return 1 if agent.get("test_mode", True) else int(job.get("copies", 1) or 1)
+
+    def _print_view(agent, job):
+        return {"id": job["id"], "job_number": job["job_number"],
+                "copies": _copies_for(agent, job), "test_mode": agent.get("test_mode", True),
+                "impose_preset": job.get("imposition_template"), "properties": job.get("properties"),
+                "stock": job.get("stock"), "print_queue": agent.get("print_queue"),
+                "print_state": job.get("print_state"), "cancel_requested": bool(job.get("cancel_requested"))}
+
+    @router.get("/edge-v2/print/claimable")
+    async def print_claimable(request: Request):
+        agent = await authenticate_agent(request)
+        if agent.get("agent_kind") != "REAL":
+            return {"jobs": [], "reason": "agent is not REAL — MOCK only"}
+        if not agent.get("hot_folder_reachable"):
+            return {"jobs": [], "reason": "Fiery Hot Folder not reachable — staying in MOCK mode"}
+        jobs = await db.prod_jobs.find(
+            {"print_state": "AUTHORIZED_HELD", "claimed_by": None, "location_id": agent.get("location_id")},
+            {"_id": 0}).to_list(20)
+        return {"jobs": [_print_view(agent, j) for j in jobs], "test_mode": agent.get("test_mode", True)}
+
+    @router.post("/edge-v2/print/{job_id}/claim")
+    async def print_claim(job_id: str, request: Request):
+        agent = await authenticate_agent(request)
+        if agent.get("agent_kind") != "REAL" or not agent.get("hot_folder_reachable"):
+            raise HTTPException(403, "Real print not available for this agent (MOCK only)")
+        token = new_id("claim-")
+        res = await db.prod_jobs.find_one_and_update(
+            {"id": job_id, "print_state": "AUTHORIZED_HELD", "claimed_by": None},
+            {"$set": {"print_state": "CLAIMED", "claimed_by": agent["agent_id"],
+                      "claim_token": token, "claimed_at": now_iso()}})
+        if not res:
+            cur = await db.prod_jobs.find_one({"id": job_id}, {"_id": 0})
+            # idempotent re-claim by the SAME agent (reconnect) — never resets, never double-prints
+            if cur and cur.get("claimed_by") == agent["agent_id"] and cur.get("print_state") in ("CLAIMED", "SENT_TO_FIERY", "PRINTING"):
+                return {"claimed": True, "idempotent": True, "job": _print_view(agent, cur), "claim_token": cur.get("claim_token")}
+            raise HTTPException(409, "Job not claimable (already claimed by another agent, cancelled, or not authorized)")
+        j = await db.prod_jobs.find_one({"id": job_id}, {"_id": 0})
+        await engine.audit(j, agent["agent_id"], "PRINT_CLAIMED", "ALLOW", evidence={"claim_token": token, "copies": _copies_for(agent, j)})
+        return {"claimed": True, "job": _print_view(agent, j), "claim_token": token}
+
+    @router.get("/edge-v2/print/{job_id}/status")
+    async def print_status(job_id: str, request: Request):
+        agent = await authenticate_agent(request)
+        j = await db.prod_jobs.find_one({"id": job_id}, {"_id": 0})
+        if not j:
+            raise HTTPException(404, "Job not found")
+        return {"print_state": j.get("print_state"), "cancel_requested": bool(j.get("cancel_requested")),
+                "claimed_by": j.get("claimed_by")}
+
+    @router.get("/edge-v2/print/{job_id}/production-pdf")
+    async def print_pdf(job_id: str, request: Request):
+        agent = await authenticate_agent(request)
+        j = await db.prod_jobs.find_one({"id": job_id}, {"_id": 0})
+        if not j or j.get("claimed_by") != agent["agent_id"]:
+            raise HTTPException(403, "Job not claimed by this agent")
+        f = await db.prod_files.find_one({"job_id": job_id, "role": "PRODUCTION_OUTPUT"}, sort=[("version", -1)])
+        if not f:
+            f = await db.prod_files.find_one({"job_id": job_id, "role": "PRINT_READY"}, sort=[("version", -1)])
+        if not f:
+            raise HTTPException(404, "No production PDF available")
+        return Response(content=f["data"], media_type="application/pdf",
+                        headers={"Content-Disposition": f'attachment; filename="{j["job_number"]}.pdf"'})
+
+    @router.post("/edge-v2/print/{job_id}/report")
+    async def print_report(job_id: str, request: Request):
+        agent = await authenticate_agent(request)
+        body = json.loads(await request.body() or b"{}")
+        new_state = (body.get("state") or "").upper()
+        if new_state not in ("SENT_TO_FIERY", "PRINTING", "PRINTED", "PRINT_FAILED"):
+            raise HTTPException(400, "Invalid print state")
+        j = await db.prod_jobs.find_one({"id": job_id}, {"_id": 0})
+        if not j or j.get("claimed_by") != agent["agent_id"]:
+            raise HTTPException(403, "Job not claimed by this agent")
+        cur = j.get("print_state")
+        if cur == "CANCELLED":
+            return {"ok": False, "cancelled": True, "note": "Job cancelled — do not print."}
+        if cur == "PRINTED":
+            return {"ok": True, "idempotent": True, "print_state": "PRINTED"}  # never double-print
+        if new_state == "PRINT_FAILED":
+            await db.prod_jobs.update_one({"id": job_id}, {"$set": {"print_state": "PRINT_FAILED", "print_error": body.get("error"), "updated_at": now_iso()}})
+            await engine.audit(j, agent["agent_id"], "PRINT_FAILED", "ALLOW", evidence={"error": body.get("error")})
+            return {"ok": True, "print_state": "PRINT_FAILED"}
+        # monotonic ordering: ignore duplicate/regressing reports (idempotent on reconnect)
+        if PRINT_ORDER.get(new_state, 0) <= PRINT_ORDER.get(cur, 0):
+            return {"ok": True, "idempotent": True, "print_state": cur}
+        updates = {"print_state": new_state, "updated_at": now_iso()}
+        if new_state == "SENT_TO_FIERY":
+            updates["dropped_at"] = now_iso(); updates["printed_copies"] = body.get("copies")
+        if new_state == "PRINTED":
+            updates["printed_at"] = now_iso(); updates["status"] = "COMPLETED"; updates["printed_copies"] = body.get("copies")
+        await db.prod_jobs.update_one({"id": job_id}, {"$set": updates})
+        await engine.audit(j, agent["agent_id"], f"PRINT_{new_state}", "ALLOW",
+                           evidence={"copies": body.get("copies"), "real": True, "mock": bool(body.get("mock"))})
+        return {"ok": True, "print_state": new_state}
+
+    @router.post("/edge-v2/agents/{agent_id}/test-mode")
+    async def set_test_mode(agent_id: str, payload: dict = Body(default={})):
+        tm = bool(payload.get("test_mode", False))
+        await db.prod_edge_agents.update_one({"agent_id": agent_id}, {"$set": {"test_mode": tm}})
+        await edge_audit(agent_id, "SET_TEST_MODE", "ALLOW", {"test_mode": tm})
+        return {"ok": True, "test_mode": tm}
+
+    @router.post("/jobs/{job_id}/cancel")
+    async def cancel_job(job_id: str, opts: AdvanceOptions = Body(default=AdvanceOptions())):
+        j = await db.prod_jobs.find_one({"id": job_id}, {"_id": 0})
+        if not j:
+            raise HTTPException(404, "Job not found")
+        ps = j.get("print_state")
+        if ps == "PRINTED":
+            raise HTTPException(400, "Already printed — cannot cancel")
+        # Not yet sent to the printer -> hard cancel now. Already sent/printing -> request cancel (best effort, agent honours next poll).
+        if ps in (None, "AUTHORIZED_HELD", "CLAIMED"):
+            await db.prod_jobs.update_one({"id": job_id}, {"$set": {"print_state": "CANCELLED", "cancel_requested": True, "cancelled_at": now_iso()}})
+            state = "CANCELLED"
+        else:
+            await db.prod_jobs.update_one({"id": job_id}, {"$set": {"cancel_requested": True}})
+            state = "CANCEL_REQUESTED"
+        await engine.audit(j, opts.actor or "human", "PRINT_CANCEL", "ALLOW", evidence={"result": state, "prev": ps})
+        return {"ok": True, "print_state": state}
 
     @router.post("/edge-v2/agents/{agent_id}/enqueue")
     async def edge_v2_enqueue(agent_id: str, payload: dict = Body(...)):

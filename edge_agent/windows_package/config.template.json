@@ -7,9 +7,16 @@
   "enrollment_token": "",
   "heartbeat_seconds": 10,
   "poll_seconds": 5,
+  "print": {
+    "enabled": true,
+    "hot_folder_path": "C:\\Fiery Hot Folders\\Jai BC",
+    "fiery_ip": "192.168.0.200",
+    "print_queue": "Jai BC",
+    "ledger_path": "logs\\print_ledger.json"
+  },
   "fiery": {
     "server": "PX300",
     "host": "192.168.0.200",
-    "imposition_template": "London BC"
+    "imposition_template": "Jai BC"
   }
 }

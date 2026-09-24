@@ -94,6 +94,8 @@ export function formatCurrency(value, currency = "CAD") {
 // Authoritative device/agent status vocabulary (shared across screens)
 export const DEVICE_STATUS = {
   ONLINE: { label: "Online", cls: "text-emerald-600", dot: "bg-emerald-500" },
+  ENABLED: { label: "Enabled", cls: "text-emerald-600", dot: "bg-emerald-500" },
+  SIMULATION: { label: "Simulation (MOCK)", cls: "text-amber-600", dot: "bg-amber-500" },
   OFFLINE: { label: "Offline", cls: "text-slate-400", dot: "bg-slate-300" },
   STALE: { label: "Stale", cls: "text-amber-600", dot: "bg-amber-500" },
   SIMULATED: { label: "Simulated", cls: "text-amber-600", dot: "bg-amber-500" },
