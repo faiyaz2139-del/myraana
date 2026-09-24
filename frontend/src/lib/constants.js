@@ -9,7 +9,7 @@ export const NAV_SECTIONS = [
     title: "Core Operational",
     items: [
       { label: "Dashboard", to: "/", icon: LayoutDashboard, id: "dashboard" },
-      { label: "AI Assistant", to: "/assistant", icon: Sparkles, id: "assistant" },
+      { label: "Print2Go Assistant", to: "/assistant", icon: Sparkles, id: "assistant" },
       { label: "Orders", to: "/orders", icon: ClipboardList, id: "orders" },
       { label: "Production Queue", to: "/production-queue", icon: ListChecks, id: "production-queue" },
       { label: "Production Engine", to: "/production", icon: Factory, id: "production" },
@@ -31,7 +31,7 @@ export const NAV_SECTIONS = [
     items: [
       { label: "Files & Artwork", to: "/files", icon: FileImage, id: "files" },
       { label: "SOP Library", to: "/sop-library", icon: Library, id: "sop-library" },
-      { label: "Diagnostics", to: "/diagnostics", icon: Activity, id: "diagnostics" },
+      { label: "Connect my shop", to: "/diagnostics", icon: Activity, id: "diagnostics" },
       { label: "Audit Log", to: "/audit-log", icon: ScrollText, id: "audit-log" },
       { label: "Reports", to: "/reports", icon: BarChart3, id: "reports" },
     ],

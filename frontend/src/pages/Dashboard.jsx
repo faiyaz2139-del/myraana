@@ -10,6 +10,7 @@ import { DEVICE_STATUS, STATUS_BANNER } from "@/lib/constants";
 import {
   FileText, Printer, AlertTriangle, CheckCircle2, TrendingUp, Plus, CalendarDays,
   Package, BookOpen, Upload, Cpu, ArrowRight, Wifi, ChevronRight, Hand, FlaskConical,
+  Sparkles, ClipboardList, LifeBuoy,
 } from "lucide-react";
 
 const KPI_META = [
@@ -56,6 +57,31 @@ export default function Dashboard() {
         <div className="inline-flex items-center gap-2 h-10 px-3.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-sm font-medium text-slate-600 dark:text-slate-300">
           <CalendarDays className="h-4 w-4 text-slate-400" /> {today}
         </div>
+      </div>
+
+      {/* Everyday quick actions — one clear next step */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4" data-testid="quick-actions">
+        <button data-testid="qa-start-job" onClick={() => { setEditing(null); setDialogOpen(true); }}
+          className="group text-left rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 hover:border-blue-400 hover:shadow-md transition-all">
+          <div className="h-11 w-11 rounded-xl bg-blue-600 text-white flex items-center justify-center mb-3"><Plus className="h-5 w-5" /></div>
+          <p className="font-bold text-slate-900 dark:text-white">Start a job</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Add a new print order.</p>
+          <span className="text-sm font-semibold text-blue-600 inline-flex items-center gap-1 mt-2">Start now <ArrowRight className="h-4 w-4 group-hover:translate-x-0.5 transition-transform" /></span>
+        </button>
+        <button data-testid="qa-see-jobs" onClick={() => navigate("/orders")}
+          className="group text-left rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 hover:border-blue-400 hover:shadow-md transition-all">
+          <div className="h-11 w-11 rounded-xl bg-slate-800 dark:bg-slate-700 text-white flex items-center justify-center mb-3"><ClipboardList className="h-5 w-5" /></div>
+          <p className="font-bold text-slate-900 dark:text-white">See my jobs</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Check how your orders are doing.</p>
+          <span className="text-sm font-semibold text-blue-600 inline-flex items-center gap-1 mt-2">View jobs <ArrowRight className="h-4 w-4 group-hover:translate-x-0.5 transition-transform" /></span>
+        </button>
+        <button data-testid="qa-get-help" onClick={() => navigate("/assistant")}
+          className="group text-left rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 hover:border-blue-400 hover:shadow-md transition-all">
+          <div className="h-11 w-11 rounded-xl bg-emerald-600 text-white flex items-center justify-center mb-3"><LifeBuoy className="h-5 w-5" /></div>
+          <p className="font-bold text-slate-900 dark:text-white">Get help</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Ask the Print2Go Assistant a question.</p>
+          <span className="text-sm font-semibold text-blue-600 inline-flex items-center gap-1 mt-2">Ask a question <ArrowRight className="h-4 w-4 group-hover:translate-x-0.5 transition-transform" /></span>
+        </button>
       </div>
 
       {/* KPIs */}

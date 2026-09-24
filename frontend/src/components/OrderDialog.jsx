@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,6 +10,7 @@ import { toast } from "sonner";
 const CATEGORIES = ["business_cards", "flyers", "stickers", "brochures", "postcards", "posters", "banner", "booklets", "labels", "menus", "invites", "general"];
 const STATUSES = ["waiting", "ready", "running", "exception", "completed"];
 const PRIORITIES = ["low", "normal", "high", "rush"];
+const DRAFT_KEY = "p2g-order-draft";
 
 const empty = {
   product_name: "", product_spec: "", category: "business_cards", quantity: 100,
@@ -19,17 +20,30 @@ const empty = {
 export const OrderDialog = ({ open, onOpenChange, order, onSaved }) => {
   const [form, setForm] = useState(empty);
   const [saving, setSaving] = useState(false);
+  const submittingRef = useRef(false);
   const isEdit = !!order;
 
   useEffect(() => {
-    if (order) setForm({ ...empty, ...order });
-    else setForm(empty);
+    if (order) { setForm({ ...empty, ...order }); return; }
+    // restore an auto-saved draft for new orders so nothing is lost
+    try {
+      const draft = JSON.parse(localStorage.getItem(DRAFT_KEY) || "null");
+      setForm(draft && typeof draft === "object" ? { ...empty, ...draft } : empty);
+    } catch {
+      setForm(empty);
+    }
   }, [order, open]);
 
-  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const set = (k, v) => setForm((f) => {
+    const next = { ...f, [k]: v };
+    if (!order) { try { localStorage.setItem(DRAFT_KEY, JSON.stringify(next)); } catch {} }
+    return next;
+  });
 
   const submit = async () => {
-    if (!form.product_name.trim()) return toast.error("Product name is required");
+    if (saving || submittingRef.current) return;   // prevent duplicate submissions
+    if (!form.product_name.trim()) return toast.error("Please add a product name to continue");
+    submittingRef.current = true;
     setSaving(true);
     try {
       if (isEdit) {
@@ -38,13 +52,15 @@ export const OrderDialog = ({ open, onOpenChange, order, onSaved }) => {
       } else {
         await api.post("/orders", { ...form, quantity: Number(form.quantity) });
         toast.success("Order created");
+        try { localStorage.removeItem(DRAFT_KEY); } catch {}   // clear draft on success
       }
       onSaved?.();
       onOpenChange(false);
     } catch (e) {
-      toast.error("Failed to save order");
+      toast.error("Couldn't save just now — please try again");
     } finally {
       setSaving(false);
+      submittingRef.current = false;
     }
   };
 
@@ -98,6 +114,7 @@ export const OrderDialog = ({ open, onOpenChange, order, onSaved }) => {
           </div>
         </div>
         <DialogFooter>
+          {!isEdit && <span className="mr-auto text-[11px] text-slate-400 self-center">Your draft is saved automatically.</span>}
           <Button variant="outline" onClick={() => onOpenChange(false)} data-testid="order-cancel">Cancel</Button>
           <Button onClick={submit} disabled={saving} data-testid="order-save" className="bg-blue-600 hover:bg-blue-700">
             {saving ? "Saving..." : isEdit ? "Save changes" : "Create order"}
