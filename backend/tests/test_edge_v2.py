@@ -38,11 +38,13 @@ def s():
 
 @pytest.fixture(scope="module")
 def agent(s):
+    tok = s.post(f"{PROD}/edge-v2/enrollment-tokens", json={}).json()["enrollment_token"]
     r = s.post(f"{PROD}/edge-v2/register", json={
         "agent_id": "TEST-EDGE-1",
         "tenant_id": "TEN-PRINT2GO",
         "location_id": "LOC-LONDON",
         "agent_kind": "REAL",
+        "enrollment_token": tok,
     })
     assert r.status_code == 200, r.text
     d = r.json()

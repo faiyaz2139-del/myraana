@@ -145,3 +145,16 @@ Made everyday use understandable without training (UI reused, no redesign, no ne
 - **Job detail** (Production Engine) shows Size / Stock / Impose preset.
 - Verified: testing agent iteration_9 → backend 100%, frontend 100%, no issues. Mock Fiery only (REAL_FIERY_BACKEND=NOT_IMPLEMENTED); HELD_VERIFIED is a mock state, never a real print.
 - **Deployment**: preview only — redeploy to push to production (myraana.com).
+
+## V1.0 — Physical print pipeline (London pilot) (2026-06)
+Real-printing architecture (cloud verified; physical drop pending on the London PC).
+- **New print lifecycle after PRODUCTION_AUTHORIZED** (`print_state`, separate from WORKFLOW): AUTHORIZED_HELD → CLAIMED → SENT_TO_FIERY → PRINTING → PRINTED (+ PRINT_FAILED, CANCELLED).
+- **Agent endpoints (outbound-only, HMAC)**: `GET /edge-v2/print/claimable`, `POST /edge-v2/print/{id}/claim` (atomic find_one_and_update → claim-exactly-once; idempotent same-agent re-claim), `GET /edge-v2/print/{id}/status` (cancel check), `GET /edge-v2/print/{id}/production-pdf`, `POST /edge-v2/print/{id}/report` (monotonic PRINT_ORDER guard, PRINTED terminal → no double-print), `POST /jobs/{id}/cancel`, `POST /edge-v2/agents/{id}/test-mode`.
+- **Heartbeat** captures agent capabilities (hot_folder_reachable, fiery_reachable, path, ip, queue); returns `real_print_enabled` + `test_mode`.
+- **Print-unlock policy**: claimable only when human-authorized AND REAL agent online AND hot folder reachable; else MOCK (no physical output). AI can never authorize. `REAL_FIERY_BACKEND` stays NOT_IMPLEMENTED module-wide; real print is per-agent capability-gated.
+- **1-copy test mode**: per-agent `test_mode` (default ON) forces copies=1 until an operator clears it.
+- **Windows agent** `edge_agent/print_worker.py`: claims, downloads PDF, drops into Fiery Hot Folder (atomic temp→rename) + sidecar `<job>.ticket.json` (queue/copies/media/duplex), reports states, local idempotency ledger (no re-drop on reconnect), cancel check before drop, MOCK fallback when hot folder unreachable. `windows_package/config.template.json` adds a `print` block (hot_folder_path default `C:\Fiery Hot Folders\Jai BC`, fiery_ip, queue, ledger).
+- **System Status** shows live Edge Agent, Fiery PX300, Fiery Hot Folder (Jai BC), and Physical printing (ENABLED vs Simulation/MOCK) + test-mode.
+- Verified: `backend/tests/test_print_pipeline.py` 6/6 (claim-once, idempotent no-double-print, cancel-before-send, offline=MOCK, 1-copy, test-mode); testing agent iteration_10 → backend 100%, frontend 100% (System Status shows MOCK while offline). Legacy `test_edge_v2.py` fixture fixed to mint enrollment token (19/19).
+- **BLOCKER / pending**: physical hot-folder drop + real PX300 printing are UNVERIFIED here (no Windows PC / no PX300 at 192.168.0.200). Must be validated by running the updated Windows agent on the real London PC. Ships preview-only; user redeploys.
+

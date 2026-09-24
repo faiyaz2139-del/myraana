@@ -1,0 +1,38 @@
+{
+  "summary": "London true-physical-print pipeline validated (cloud + UI only, no PX300 hardware). Re-ran backend/tests/test_print_pipeline.py: 6/6 pass — heartbeat reports real_print_enabled+test_mode; atomic claim-exactly-once with idempotent same-agent re-claim (same claim_token, no state reset); 1-copy enforced in test_mode; production-pdf download works; SENT_TO_FIERY→PRINTING→PRINTED transitions set print_state=PRINTED and status=COMPLETED; duplicate/regressing reports are no-ops (monotonic PRINT_ORDER guard, PRINTED terminal → no double-print); cancel-before-send flips CANCELLED and claim→409; when hot_folder unreachable, claimable list is empty (reason mentions MOCK) and claim→403; clearing test_mode flips the flag. Independently verified: (a) AI authorize → 403 ('AI cannot authorize production'), (b) human authorize → 200 lands in PRODUCTION_AUTHORIZED with print_state=AUTHORIZED_HELD, (c) unauthenticated edge-v2 claim endpoints → 401 (HMAC required, human gate never bypassed). GET /api/system-status with no real agent returns production_mode=SIMULATION, real_print_enabled=false, test_mode=true, level=critical, summary='Edge Agent offline — running in simulation (MOCK)', items include 'Fiery Hot Folder (Jai BC)' (UNKNOWN) and 'Physical printing' (SIMULATION, label 'Simulation (MOCK)'), plus edge agent shown STALE (not ONLINE) — nothing shows physically printing. Dashboard UI renders all 4 required data-testids (system-status-summary red-critical banner, production-mode-note with MOCK copy, system-status-item-hot-folder, system-status-item-real-print with 'Simulation (MOCK)' label). Regression: test_pilot_bc.py 9/9 pass; pilot recipe + legacy RECIPE-BC-LONDON-V1 ('London BC') still imposed; STOP rules and human-gate intact; Dashboard/Machines/Connect-my-shop/Edge Agents nav all render.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "backend/tests/test_edge_v2.py", "issue": "Older suite fails at fixture setup: /edge-v2/register now requires an enrollment token, but this legacy test posts without minting one via POST /api/production/edge-v2/enrollment-tokens. 11 errors, all in setup. Not caused by this iteration's changes (enrollment gating pre-existed) but the fixture in that file should be updated to mint a token first. test_print_pipeline.py handles this correctly."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_print_pipeline.py",
+    "/app/test_reports/pytest/print_pipeline_results.xml",
+    "/app/backend/tests/test_pilot_bc.py"
+  ],
+  "action_items": [
+    "OPTIONAL (not blocking London pilot): update backend/tests/test_edge_v2.py fixture to mint an enrollment token before /edge-v2/register (the print pipeline suite already does this correctly). The regression is a stale test, not a product bug.",
+    "OPTIONAL: production.py has grown large (>1200 LoC) and could be split into engine/adapter/router modules for maintainability."
+  ],
+  "critical_code_review_comments": [
+    "server.py system_status(): computes real_print_enabled = agent_online AND agent_kind=='REAL' AND hot_folder — matches spec's 3-way gate. When agent offline, no downstream device is shown as ONLINE. Good defense-in-depth.",
+    "production.py: authorize() route rejects ai_actor=true with 403; the state engine also refuses AI in policy() — dual-layer human-only gate confirmed by live curl.",
+    "edge-v2/print/claim uses find_one_and_update (atomic) and short-circuits when existing claim_token matches the requesting agent → idempotent re-claim without resetting state. Correctly returns 409 when a different agent already claimed, and 403 when the agent has no reachable hot folder → cannot bypass MOCK.",
+    "PRINT_ORDER guard on /report makes PRINTED terminal and rejects regressions — prevents double-print on reconnect. Verified by test_no_double_print_on_reconnect.",
+    "System Status UI banner uses level→color mapping and includes production-mode-note with clear MOCK copy — non-technical operator can immediately see 'no physical printing right now'."
+  ],
+  "updated_files": ["/app/test_reports/iteration_10.json"],
+  "success_rate": {"backend": "100% (6/6 print pipeline + 9/9 pilot regression)", "frontend": "100% (all 4 required data-testids render correct MOCK/SIMULATION state)"},
+  "test_credentials": "None — agents auth via HMAC (register→signing_secret); enrollment token minted via POST /api/production/edge-v2/enrollment-tokens. No user auth in this app.",
+  "seed_data_creation": "test_print_pipeline created a handful of prod_jobs under agent TEST-EDGE-PRINT flagged is_test=true, one job reached PRINTED terminal. Manual curl verification created 2 additional pilot BC quickstart jobs (BC-1255, BC-1256), BC-1256 authorized to PRODUCTION_AUTHORIZED + AUTHORIZED_HELD but not printed (no real agent).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Do NOT try to run edge_agent/print_worker.py — it needs Windows + PX300. Cloud-side print state machine is complete: PRINT_STATES flow AUTHORIZED_HELD→CLAIMED→SENT_TO_FIERY→PRINTING→PRINTED, gated by (human-auth AND real agent online AND hot_folder_reachable). System-status is the single source of truth for the frontend. If a future iteration wants to simulate a real agent for UI-only testing, register an agent with agent_kind=REAL and heartbeat with hot_folder_reachable=true, fiery_reachable=true — status should flip to production_mode=PHYSICAL, level=ok, 'Physical printing ready — 1-copy TEST mode'. test_edge_v2.py legacy fixtures still need the enrollment-token fix (see minor issue above).",
+  "rca of the issue": "N/A — feature implemented correctly and all specified safety properties hold."
+}
