@@ -158,3 +158,11 @@ Real-printing architecture (cloud verified; physical drop pending on the London 
 - Verified: `backend/tests/test_print_pipeline.py` 6/6 (claim-once, idempotent no-double-print, cancel-before-send, offline=MOCK, 1-copy, test-mode); testing agent iteration_10 → backend 100%, frontend 100% (System Status shows MOCK while offline). Legacy `test_edge_v2.py` fixture fixed to mint enrollment token (19/19).
 - **BLOCKER / pending**: physical hot-folder drop + real PX300 printing are UNVERIFIED here (no Windows PC / no PX300 at 192.168.0.200). Must be validated by running the updated Windows agent on the real London PC. Ships preview-only; user redeploys.
 
+## V1.1 — One-click Connector installer + download (2026-06)
+Package the Windows edge agent so branch staff can install it themselves; the "Connect my shop" page now offers a real download.
+- **Self-contained ZIP** built on the fly by `GET /api/production/edge-v2/connector/download` (~17.6MB). Bundles: embedded Python 3.11 (`python-embed-amd64.zip`, no separate Python install), offline wheels (requests+cryptography closure), `get-pip.py`, agent source (agent/capabilities/discovery/diagnose), one-click `Install-Print2Go-Connector.bat`, `start-hidden.vbs`, `config.template.json` (cloud_url pre-filled to https://myraana.com + Jai BC / PX300 defaults), `README.txt`. Static assets live in `/app/edge_agent/connector_assets/`.
+- **Installer flow**: unzip → double-click `.bat` → extracts runtime, offline-installs components once, prompts for pairing code → writes `config.json`, registers a Startup shortcut (auto-start on login via wscript hidden launcher), then launches the connector. Read-only agent (never prints).
+- **Connect my shop page**: 3-step card — (1) Download the Connector button (`download-connector` → connector download URL), (2) Unzip + run installer + Get pairing code, (3) Come back. Test IDs: `install-step-1/2/3`, `download-connector`, `get-pairing-code`, `pairing-code`.
+- Verified (preview): download returns valid 17.6MB zip with all 18 entries + intact embedded-python structure (`python311._pth` present); pairing-token mint OK; page renders all steps/buttons (screenshot).
+- **Pending on-prem**: actual Windows unzip/install/startup/pairing must be validated on the London shop PC (cannot be run from this Linux env). Ships preview-only; user redeploys to myraana.com.
+

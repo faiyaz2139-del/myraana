@@ -15,6 +15,8 @@ import hmac
 import time
 import hashlib
 import uuid
+import zipfile
+from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
@@ -1342,6 +1344,36 @@ def build_router(db):
             _, agent["real_online"] = _v2_live(agent)
         rep = _build_report(agent, action)
         return {"json": rep, "markdown": _report_md(rep)}
+
+    @router.get("/edge-v2/connector/download")
+    async def download_connector():
+        """Serve the ready-to-run Print2Go Connector ZIP for the Windows shop PC.
+        Bundles an embedded Python + offline wheels + agent source + one-click
+        installer, so branch staff just unzip and double-click. No Python or
+        build machine required on the shop PC."""
+        edge_dir = Path(__file__).resolve().parent.parent / "edge_agent"
+        assets = edge_dir / "connector_assets"
+        tpl = assets / "template"
+        root = "Print2Go-Connector"
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+            # bundled runtime + offline components
+            z.write(assets / "python-embed-amd64.zip", f"{root}/python-embed-amd64.zip")
+            z.write(assets / "get-pip.py", f"{root}/get-pip.py")
+            for whl in sorted((assets / "wheels").glob("*.whl")):
+                z.write(whl, f"{root}/wheels/{whl.name}")
+            # one-click installer + launcher + config template + readme
+            for name in ("Install-Print2Go-Connector.bat", "start-hidden.vbs",
+                         "config.template.json", "README.txt"):
+                z.write(tpl / name, f"{root}/{name}")
+            # agent source (read-only connector)
+            for name in ("agent.py", "capabilities.py", "discovery.py",
+                         "diagnose.py", "requirements.txt"):
+                z.write(edge_dir / name, f"{root}/{name}")
+        buf.seek(0)
+        return Response(
+            content=buf.read(), media_type="application/zip",
+            headers={"Content-Disposition": 'attachment; filename="Print2Go-Connector.zip"'})
 
     return router
 

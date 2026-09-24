@@ -11,6 +11,7 @@ import {
 import { toast } from "sonner";
 
 const AGENT_ID = "P2G-LONDON-EDGE-01";
+const CONNECTOR_URL = `${process.env.REACT_APP_BACKEND_URL}/api/production/edge-v2/connector/download`;
 
 function Tri({ value }) {
   if (value === true || value === "REACHABLE" || value === "DETECTED" || value === "ONLINE")
@@ -124,24 +125,52 @@ export default function Diagnostics() {
             <div className="h-12 w-12 rounded-xl bg-amber-100 dark:bg-amber-950/50 text-amber-600 flex items-center justify-center shrink-0"><PlugZap className="h-6 w-6" /></div>
             <div className="flex-1">
               <h2 className="text-lg font-bold text-slate-900 dark:text-white">Your shop isn't connected yet</h2>
-              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">We haven't linked to a computer at your shop, so we can't check your printer yet. Here's how to connect:</p>
-              <ol className="mt-4 space-y-2 text-sm text-slate-700 dark:text-slate-200">
-                <li><span className="font-bold text-blue-600">1.</span> Get your pairing code below.</li>
-                <li><span className="font-bold text-blue-600">2.</span> On your shop computer, open the Print2Go Connector and enter the code.</li>
-                <li><span className="font-bold text-blue-600">3.</span> Come back here — we'll run safe checks automatically.</li>
-              </ol>
+              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Install the free Print2Go Connector on your shop computer once. It links Print2Go to your printer and only runs safe, read-only checks — it never prints anything.</p>
 
-              {!pairingCode ? (
-                <Button data-testid="get-pairing-code" onClick={getPairingCode} disabled={minting} className="mt-5 bg-blue-600 hover:bg-blue-700 gap-1.5">
-                  {minting ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlugZap className="h-4 w-4" />} Get pairing code
-                </Button>
-              ) : (
-                <div className="mt-5 flex items-center gap-2" data-testid="pairing-code">
-                  <code className="px-3 py-2 rounded-lg bg-slate-900 text-emerald-400 font-mono text-sm">{pairingCode}</code>
-                  <Button variant="outline" size="sm" onClick={copyCode} className="gap-1.5"><Copy className="h-4 w-4" /> Copy</Button>
-                  <span className="text-xs text-slate-400">Use within setup · single use</span>
+              <div className="mt-5 space-y-5">
+                {/* Step 1 — download */}
+                <div className="flex items-start gap-3" data-testid="install-step-1">
+                  <span className="h-6 w-6 shrink-0 rounded-full bg-blue-600 text-white text-xs font-bold flex items-center justify-center">1</span>
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Download the Print2Go Connector</p>
+                    <p className="text-xs text-slate-400 mt-0.5">One small file. Nothing else to install — Windows only.</p>
+                    <a href={CONNECTOR_URL} data-testid="download-connector">
+                      <Button className="mt-2 bg-slate-900 hover:bg-slate-800 dark:bg-white dark:text-slate-900 gap-1.5">
+                        <Download className="h-4 w-4" /> Download the Connector
+                      </Button>
+                    </a>
+                  </div>
                 </div>
-              )}
+
+                {/* Step 2 — install + pairing code */}
+                <div className="flex items-start gap-3" data-testid="install-step-2">
+                  <span className="h-6 w-6 shrink-0 rounded-full bg-blue-600 text-white text-xs font-bold flex items-center justify-center">2</span>
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Unzip it and double-click <code className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[11px]">Install-Print2Go-Connector.bat</code></p>
+                    <p className="text-xs text-slate-400 mt-0.5">When it asks, paste the pairing code below. It sets itself to start automatically from then on.</p>
+                    {!pairingCode ? (
+                      <Button data-testid="get-pairing-code" onClick={getPairingCode} disabled={minting} className="mt-2 bg-blue-600 hover:bg-blue-700 gap-1.5">
+                        {minting ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlugZap className="h-4 w-4" />} Get pairing code
+                      </Button>
+                    ) : (
+                      <div className="mt-2 flex items-center gap-2 flex-wrap" data-testid="pairing-code">
+                        <code className="px-3 py-2 rounded-lg bg-slate-900 text-emerald-400 font-mono text-sm">{pairingCode}</code>
+                        <Button variant="outline" size="sm" onClick={copyCode} className="gap-1.5"><Copy className="h-4 w-4" /> Copy</Button>
+                        <span className="text-xs text-slate-400">Use within setup · single use</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Step 3 — done */}
+                <div className="flex items-start gap-3" data-testid="install-step-3">
+                  <span className="h-6 w-6 shrink-0 rounded-full bg-blue-600 text-white text-xs font-bold flex items-center justify-center">3</span>
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Come back to this page</p>
+                    <p className="text-xs text-slate-400 mt-0.5">It'll show “connected” within about a minute, and we'll run safe checks automatically.</p>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </SectionCard>
