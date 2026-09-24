@@ -169,6 +169,13 @@ export default function ProductionEngine() {
                   <div>
                     <p className="font-mono text-lg font-bold">{job.job_number}</p>
                     <p className="text-xs text-slate-400">{job.customer} · {job.orientation} · {job.sides}pp · recipe {job.recipe_id} <span className="font-mono">{job.recipe_version}</span> (pinned)</p>
+                    {job.properties && (
+                      <div className="flex flex-wrap gap-1.5 mt-2" data-testid="prod-job-properties">
+                        <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">Size: {job.properties.size}</span>
+                        <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">Stock: {job.properties.stock}</span>
+                        <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-950/50 text-blue-700 dark:text-blue-400">Impose: {job.properties.impose_preset}</span>
+                      </div>
+                    )}
                   </div>
                   <span className="text-xs font-mono font-bold px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800" data-testid="prod-current-state">{job.state}</span>
                 </div>

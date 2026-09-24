@@ -18,7 +18,7 @@ import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, UploadFile, File, Body, Query, Request, Header
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Body, Query, Request, Header
 from pydantic import BaseModel
 from pypdf import PdfReader, PdfWriter
 from pypdf.generic import RectangleObject, ContentStream, NameObject, DecodedStreamObject
@@ -191,6 +191,28 @@ def classify_size(w, h):
     return None, None, "WRONG_DIMENSIONS"
 
 
+# Pilot geometry + selectable size options (New Order dialog). "block others" = only these two.
+PILOT_SIZE = {"LANDSCAPE": (3.25, 2.25), "PORTRAIT": (2.25, 3.25)}
+SIZE_OPTIONS = {
+    "STD_3_5x2": {"label": "3.5×2 (no-bleed)", "accept": [(3.5, 2.0), (2.0, 3.5), (3.75, 2.25), (2.25, 3.75)],
+                  "expected_bleed": BLEED_SIZE, "pilot": False},
+    "PILOT_3_25x2_25": {"label": "3.25×2.25 (bleed)", "accept": [(3.25, 2.25), (2.25, 3.25)],
+                        "expected_bleed": PILOT_SIZE, "pilot": True},
+}
+
+
+def classify_size_for(w, h, size_option):
+    """Size-aware classifier. Standard option delegates to the validated engine; the pilot
+    option accepts 3.25x2.25 (already at bleed). Anything else is blocked (WRONG_DIMENSIONS)."""
+    opt = SIZE_OPTIONS.get(size_option or "STD_3_5x2")
+    if opt and opt["pilot"]:
+        for (aw, ah) in opt["accept"]:
+            if close(w, aw) and close(h, ah):
+                return "BLEED", ("LANDSCAPE" if aw >= ah else "PORTRAIT"), None
+        return None, None, "WRONG_DIMENSIONS"
+    return classify_size(w, h)
+
+
 def make_pdf_bytes(w_in, h_in, pages, with_bleed) -> bytes:
     writer = PdfWriter()
     for _ in range(pages):
@@ -359,6 +381,8 @@ class CreateJobRequest(BaseModel):
     safe_area_ok: bool = True
     protected_content_review: bool = False
     safe_area_unknown: bool = False
+    size_option: str = "STD_3_5x2"
+    stock: str = "Matte"
 
 
 class AdvanceOptions(BaseModel):
@@ -471,7 +495,7 @@ class ProductionEngine:
                 await self.set_stop(job, "CONFIGURATION_REQUIRED", "No ORIGINAL artwork uploaded", actor)
                 return {"job": await self.get(job["id"]), "policy": decision}
             m = measure_pdf_bytes(orig["data"])
-            kind, orient, size_err = classify_size(m["width_in"], m["height_in"])
+            kind, orient, size_err = classify_size_for(m["width_in"], m["height_in"], job.get("size_option"))
             if size_err:
                 await self.set_stop(job, size_err, f"Measured {m['width_in']}x{m['height_in']}in", actor)
                 return {"job": await self.get(job["id"]), "policy": decision, "measure": m}
@@ -489,13 +513,15 @@ class ProductionEngine:
             margin = (recipe or {}).get("parameters", {}).get("safe_area_margin_in", SAFE_AREA_MARGIN_IN)
             sa = analyze_safe_area(orig["data"], margin, unknown=job.get("safe_area_unknown", False))
             await self.db.prod_jobs.update_one({"id": job["id"]}, {"$set": {"safe_area": sa}})
+            _opt = SIZE_OPTIONS.get(job.get("size_option") or "STD_3_5x2")
+            _exp = list(_opt["expected_bleed"][orient]) if _opt else list(BLEED_SIZE[orient])
             if sa["status"] == "UNSAFE":
                 await self.set_stop(job, "UNSAFE_SAFE_AREA", f"Content {sa['nearest_in']}in from trim (< {margin}in safe margin)", actor)
                 return {"job": await self.get(job["id"]), "policy": decision, "measure": m, "safe_area": sa}
             if sa["status"] == "REVIEW_REQUIRED":
                 await self.set_stop(job, "SAFE_AREA_REVIEW_REQUIRED", "Safe area could not be determined deterministically — human review required", actor)
                 return {"job": await self.get(job["id"]), "policy": decision, "measure": m, "safe_area": sa}
-            await self.db.prod_jobs.update_one({"id": job["id"]}, {"$set": {"detected_kind": kind, "orientation": orient, "preflight": m, "safe_area": sa}})
+            await self.db.prod_jobs.update_one({"id": job["id"]}, {"$set": {"detected_kind": kind, "orientation": orient, "preflight": m, "safe_area": sa, "expected_bleed": _exp}})
             result_evidence = {"measure": m, "kind": kind, "orientation": orient, "safe_area": sa}
 
         elif state == "BLEED_DECISION":
@@ -531,7 +557,8 @@ class ProductionEngine:
                 return {"job": await self.get(job["id"]), "policy": decision}
             m = measure_pdf_bytes(pr["data"])
             orient = job.get("orientation", "LANDSCAPE")
-            exp_w, exp_h = BLEED_SIZE[orient]
+            _exp = job.get("expected_bleed") or list(BLEED_SIZE[orient])
+            exp_w, exp_h = _exp[0], _exp[1]
             ok = (close(m["width_in"], exp_w) and close(m["height_in"], exp_h)
                   and m["pages"] >= job["sides"] and m["trimbox_in"][0] is not None)
             if not ok:
@@ -573,7 +600,7 @@ class ProductionEngine:
             if not adapter:
                 await self.set_stop(job, "FIERY_UNAVAILABLE", err or "unavailable", actor)
                 return {"job": await self.get(job["id"]), "policy": decision}
-            template = LOCATION_LONDON["fiery"]["IMPOSITION_TEMPLATE"]
+            template = job.get("imposition_template") or LOCATION_LONDON["fiery"]["IMPOSITION_TEMPLATE"]
             template_available = (opts.simulate != "TEMPLATE_NOT_FOUND")
             jid = job.get("fiery_job_id", "MOCKJOB")
             adapter.open_impose(jid)
@@ -651,6 +678,8 @@ def build_router(db):
         if recipe.get("product_code") != req.product_code:
             raise HTTPException(400, "Recipe/product mismatch")
         count = await db.prod_jobs.count_documents({})
+        template = recipe.get("parameters", {}).get("imposition_template") or LOCATION_LONDON["fiery"]["IMPOSITION_TEMPLATE"]
+        size_label = SIZE_OPTIONS.get(req.size_option, SIZE_OPTIONS["STD_3_5x2"])["label"]
         job = {
             "id": new_id("JOB-"), "job_number": f"BC-{1001 + count}",
             "tenant_id": TENANT["id"], "tenant": TENANT["name"],
@@ -659,6 +688,8 @@ def build_router(db):
             "recipe_snapshot": recipe, "customer": req.customer, "orientation": req.orientation, "sides": req.sides,
             "safe_area_ok": req.safe_area_ok, "protected_content_review": req.protected_content_review,
             "safe_area_unknown": req.safe_area_unknown,
+            "size_option": req.size_option, "stock": req.stock, "imposition_template": template,
+            "properties": {"size": size_label, "stock": req.stock, "impose_preset": template},
             "state": "ORDER_RECEIVED", "status": "RUNNING", "stop": None,
             "created_at": now_iso(), "updated_at": now_iso(),
         }
@@ -666,6 +697,71 @@ def build_router(db):
         j = await engine.get(job["id"])
         await engine.audit(j, "system", "JOB_CREATED", "ALLOW", evidence={"recipe_version": recipe["version"], "recipe_id": req.recipe_id})
         return j
+
+    @router.post("/jobs/quickstart")
+    async def quickstart_job(
+        file: UploadFile = File(...),
+        size_option: str = Form("STD_3_5x2"),
+        stock: str = Form("Matte"),
+        recipe_id: str = Form("RECIPE-BC-LONDON-PILOT-V1"),
+        customer: str = Form("Demo Customer"),
+    ):
+        """New Order dropzone: create a BC production job, attach artwork, and auto-drive it
+        through preflight -> impose (recipe preset) -> HOLD. Never authorizes/prints (gate kept)."""
+        if size_option not in SIZE_OPTIONS:
+            raise HTTPException(400, "Unsupported size — only the two Business Card sizes are allowed")
+        if stock not in ("Matte", "Glossy"):
+            raise HTTPException(400, "Stock must be Matte or Glossy")
+        data = await file.read()
+        if len(data) == 0:
+            raise HTTPException(400, "Empty file")
+        if len(data) > 50 * 1024 * 1024:
+            raise HTTPException(400, "File exceeds 50MB")
+        try:
+            meta = measure_pdf_bytes(data)
+        except Exception:
+            raise HTTPException(400, "Uploaded file is not a readable PDF")
+        recipe = await db.recipes.find_one({"recipe_id": recipe_id}, {"_id": 0})
+        if not recipe or recipe.get("status") != "ACTIVE":
+            raise HTTPException(400, "Recipe not available or not ACTIVE")
+
+        count = await db.prod_jobs.count_documents({})
+        template = recipe.get("parameters", {}).get("imposition_template") or LOCATION_LONDON["fiery"]["IMPOSITION_TEMPLATE"]
+        size_label = SIZE_OPTIONS[size_option]["label"]
+        job = {
+            "id": new_id("JOB-"), "job_number": f"BC-{1001 + count}",
+            "tenant_id": TENANT["id"], "tenant": TENANT["name"],
+            "location_id": LOCATION_LONDON["id"], "location": LOCATION_LONDON["name"],
+            "product_code": recipe.get("product_code", PRODUCT_BC["code"]),
+            "recipe_id": recipe_id, "recipe_version": recipe["version"], "recipe_snapshot": recipe,
+            "customer": customer, "orientation": "LANDSCAPE", "sides": 1,
+            "safe_area_ok": True, "protected_content_review": False, "safe_area_unknown": False,
+            "size_option": size_option, "stock": stock, "imposition_template": template,
+            "properties": {"size": size_label, "stock": stock, "impose_preset": template},
+            "state": "ORDER_RECEIVED", "status": "RUNNING", "stop": None,
+            "created_at": now_iso(), "updated_at": now_iso(),
+        }
+        await db.prod_jobs.insert_one(dict(job))
+        j = await engine.get(job["id"])
+        await engine.audit(j, "system", "JOB_CREATED", "ALLOW",
+                           evidence={"recipe_id": recipe_id, "size": size_label, "stock": stock, "impose_preset": template})
+        rec = await engine.add_file(j, "ORIGINAL", data, customer, metadata=meta, filename=file.filename)
+        await db.prod_jobs.update_one({"id": job["id"]}, {"$set": {"state": "ARTWORK_RECEIVED", "updated_at": now_iso()}})
+        j = await engine.get(job["id"])
+        await engine.audit(j, customer, "ARTWORK_RECEIVED", "ALLOW", input_hash=rec["sha256"],
+                           evidence={"file": rec["filename"], "measure": meta})
+
+        # Auto-advance to the human authorization gate (HOLD). Never authorize/print.
+        opts = AdvanceOptions(actor="system-auto", use_mock_fiery=True)
+        for _ in range(20):
+            j = await engine.get(job["id"])
+            if j.get("stop") or j["state"] in (HUMAN_GATE_FROM, "PRODUCTION_AUTHORIZED"):
+                break
+            res = await engine.advance(j, opts, authorized=False)
+            if (res.get("policy") or {}).get("decision") != "ALLOW":
+                break
+        final = await engine.get(job["id"])
+        return {"job": final, "held": final["state"] == HUMAN_GATE_FROM, "stop": final.get("stop")}
 
     @router.get("/jobs")
     async def list_jobs(tenant_id: str = "TEN-PRINT2GO", location_id: str = "LOC-LONDON"):
@@ -1124,9 +1220,35 @@ async def seed_production(db):
                       "Imposition (London BC)", "Await production authorization"],
             "parameters": {"trim": {"landscape": [3.5, 2.0], "portrait": [2.0, 3.5]}, "bleed_in": BLEED,
                            "file_with_bleed": {"landscape": [3.75, 2.25], "portrait": [2.25, 3.75]},
-                           "safe_area_margin_in": SAFE_AREA_MARGIN_IN,
+                           "safe_area_margin_in": SAFE_AREA_MARGIN_IN, "imposition_template": "London BC",
                            "automation_level": "SEMI_AUTO_HUMAN_PRINT_GATE"},
             "provenance": {"origin": "human_authored"}, "extraction_model": "", "source": "manual", "created_at": now_iso(),
+        })
+    else:
+        # keep "London BC" imposition preset recorded on V1 (idempotent, non-destructive)
+        await db.recipes.update_one(
+            {"recipe_id": "RECIPE-BC-LONDON-V1", "parameters.imposition_template": {"$exists": False}},
+            {"$set": {"parameters.imposition_template": "London BC"}})
+
+    # London pilot clone — impose preset "Jai BC" (V1 and "London BC" left intact)
+    if not await db.recipes.find_one({"recipe_id": "RECIPE-BC-LONDON-PILOT-V1"}):
+        base = await db.recipes.find_one({"recipe_id": "RECIPE-BC-LONDON-V1"}, {"_id": 0})
+        params = dict((base or {}).get("parameters", {}))
+        params["imposition_template"] = "Jai BC"
+        params["accepted_sizes"] = ["3.5×2 (no-bleed)", "3.25×2.25 (bleed)"]
+        await db.recipes.insert_one({
+            "id": new_id("REC-"), "recipe_id": "RECIPE-BC-LONDON-PILOT-V1", "version": "v1-pilot",
+            "name": "Business Card — London Pilot (Jai BC)", "product": "Business Cards", "product_code": PRODUCT_BC["code"],
+            "tenant": "Print2Go", "location": "Print2Go London", "status": "ACTIVE",
+            "description": "London pilot recipe cloned from RECIPE-BC-LONDON-V1. Uses 'Jai BC' imposition preset. Accepts 3.5×2 and 3.25×2.25 (bleed).",
+            "materials": (base or {}).get("materials", ["350gsm Silk", "Matte Lamination", "CMYK"]),
+            "machines": (base or {}).get("machines", ["Fiery PX300", "Duplo Cutter"]), "processes": WORKFLOW,
+            "steps": ["Receive order", "Receive artwork", "Preflight", "Bleed decision", "Prepare artwork",
+                      "Generate print-ready", "Verify print-ready", "Route to production", "Fiery preparation",
+                      "Imposition (Jai BC)", "Await production authorization"],
+            "parameters": params,
+            "provenance": {"origin": "cloned", "cloned_from": "RECIPE-BC-LONDON-V1"},
+            "extraction_model": "", "source": "clone", "created_at": now_iso(),
         })
 
     if not await db.prod_edge_agents.find_one({"agent_id": "P2G-LONDON-EDGE-01"}):

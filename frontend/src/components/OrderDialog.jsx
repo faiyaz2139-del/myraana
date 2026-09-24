@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { UploadCloud, Loader2 } from "lucide-react";
 import api from "@/lib/api";
 import { toast } from "sonner";
 
@@ -18,10 +20,43 @@ const empty = {
 };
 
 export const OrderDialog = ({ open, onOpenChange, order, onSaved }) => {
+  const navigate = useNavigate();
   const [form, setForm] = useState(empty);
   const [saving, setSaving] = useState(false);
+  const [sizeOption, setSizeOption] = useState("STD_3_5x2");
+  const [stock, setStock] = useState("Matte");
+  const [uploading, setUploading] = useState(false);
+  const [drag, setDrag] = useState(false);
+  const pilotInput = useRef(null);
   const submittingRef = useRef(false);
   const isEdit = !!order;
+
+  const startPilot = async (fileList) => {
+    const file = (fileList || [])[0];
+    if (!file) return;
+    if (!/\.pdf$/i.test(file.name)) return toast.error("Please upload a PDF file");
+    if (file.size > 50 * 1024 * 1024) return toast.error("File must be under 50MB");
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("size_option", sizeOption);
+      fd.append("stock", stock);
+      fd.append("recipe_id", "RECIPE-BC-LONDON-PILOT-V1");
+      fd.append("customer", form.customer || "Demo Customer");
+      const { data } = await api.post("/production/jobs/quickstart", fd, { headers: { "Content-Type": "multipart/form-data" } });
+      if (data.stop) toast.error(`Job stopped at preflight: ${data.stop.code}`);
+      else if (data.held) toast.success(`Job ${data.job.job_number} imposed (Jai BC) — held for your approval`);
+      try { localStorage.removeItem(DRAFT_KEY); } catch {}
+      onSaved?.();
+      onOpenChange(false);
+      navigate("/production");
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Couldn't start the job — please try again");
+    } finally {
+      setUploading(false);
+    }
+  };
 
   useEffect(() => {
     if (order) { setForm({ ...empty, ...order }); return; }
@@ -113,6 +148,45 @@ export const OrderDialog = ({ open, onOpenChange, order, onSaved }) => {
             <Input data-testid="order-customer" value={form.customer} onChange={(e) => set("customer", e.target.value)} />
           </div>
         </div>
+
+        {!isEdit && (
+          <div className="mt-1 rounded-xl border border-blue-200 dark:border-blue-900/50 bg-blue-50/60 dark:bg-blue-950/20 p-4" data-testid="pilot-block">
+            <p className="text-sm font-bold text-slate-800 dark:text-slate-100">Auto-start a Business Card pilot</p>
+            <p className="text-xs text-slate-500 mt-0.5">Pick size and stock, then drop your PDF. We impose it with <strong>Jai BC</strong> and hold it for your approval — nothing prints.</p>
+            <div className="grid grid-cols-2 gap-3 mt-3">
+              <div className="space-y-1.5">
+                <Label>Size</Label>
+                <Select value={sizeOption} onValueChange={setSizeOption}>
+                  <SelectTrigger data-testid="pilot-size"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="STD_3_5x2">3.5×2 (no-bleed)</SelectItem>
+                    <SelectItem value="PILOT_3_25x2_25">3.25×2.25 (bleed)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Stock</Label>
+                <div className="flex rounded-lg border border-slate-200 dark:border-slate-800 overflow-hidden h-10" data-testid="pilot-stock">
+                  {["Matte", "Glossy"].map((s) => (
+                    <button key={s} type="button" onClick={() => setStock(s)} data-testid={`pilot-stock-${s.toLowerCase()}`}
+                      className={`flex-1 text-sm font-semibold transition-colors ${stock === s ? "bg-blue-600 text-white" : "text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"}`}>{s}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div data-testid="pilot-dropzone" onClick={() => pilotInput.current?.click()}
+              onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)}
+              onDrop={(e) => { e.preventDefault(); setDrag(false); startPilot(e.dataTransfer.files); }}
+              className={`mt-3 rounded-xl border-2 border-dashed p-5 text-center cursor-pointer transition-colors ${drag ? "border-blue-500 bg-blue-100/50 dark:bg-blue-900/30" : "border-slate-300 dark:border-slate-700 hover:border-blue-400"}`}>
+              <input ref={pilotInput} type="file" accept=".pdf" className="hidden" data-testid="pilot-file-input"
+                onChange={(e) => { startPilot(e.target.files); e.target.value = ""; }} />
+              {uploading
+                ? <span className="inline-flex items-center gap-2 text-blue-600 text-sm font-semibold"><Loader2 className="h-4 w-4 animate-spin" /> Starting job…</span>
+                : <span className="inline-flex items-center gap-2 text-slate-600 dark:text-slate-300 text-sm"><UploadCloud className="h-5 w-5 text-blue-600" /> Drop your PDF (max 50MB) to auto-start</span>}
+            </div>
+          </div>
+        )}
+
         <DialogFooter>
           {!isEdit && <span className="mr-auto text-[11px] text-slate-400 self-center">Your draft is saved automatically.</span>}
           <Button variant="outline" onClick={() => onOpenChange(false)} data-testid="order-cancel">Cancel</Button>
