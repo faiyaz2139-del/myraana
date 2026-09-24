@@ -136,3 +136,12 @@ Made everyday use understandable without training (UI reused, no redesign, no ne
 - OrderDialog: auto-saved **drafts** (localStorage) restored on reopen, cleared on success; **duplicate-submit** prevented (in-flight guard + disabled button).
 - Verified: testing agent iteration_8 → backend 100%, frontend 100%, no issues (one non-blocking Radix a11y hint left as-is, out of scope). Desktop + mobile journeys checked.
 - **Deployment**: preview only — redeploy to push to production (myraana.com).
+
+## V0.9 — London BC pilot + New Order auto-start (2026-06)
+- **Recipe clone**: `RECIPE-BC-LONDON-PILOT-V1` (ACTIVE) cloned from V1 with impose preset **"Jai BC"**; V1 + "London BC" left intact (V1 now also records its `imposition_template`).
+- **Size-aware geometry**: `SIZE_OPTIONS` + `classify_size_for()` — `STD_3_5x2` (accepts 3.5×2 or 3.75×2.25) and new pilot `PILOT_3_25x2_25` (accepts 3.25×2.25 bleed). All other sizes blocked (WRONG_DIMENSIONS). Verification uses per-job `expected_bleed`; imposition uses per-job `imposition_template`.
+- **Quickstart** `POST /api/production/jobs/quickstart` (multipart PDF ≤50MB + size_option + stock): creates a Production job with the pilot recipe, attaches artwork, auto-drives preflight→impose(Jai BC)→**HOLD**. Never authorizes/prints — human gate preserved (AI authorize still 403). Stores `properties {size, stock, impose_preset}`.
+- **New Order dialog**: pilot block (new orders only) — Size dropdown (2 options), Matte/Glossy stock toggle, PDF dropzone → auto-starts the job and navigates to Production Engine. Standard create + draft + dup-guard preserved.
+- **Job detail** (Production Engine) shows Size / Stock / Impose preset.
+- Verified: testing agent iteration_9 → backend 100%, frontend 100%, no issues. Mock Fiery only (REAL_FIERY_BACKEND=NOT_IMPLEMENTED); HELD_VERIFIED is a mock state, never a real print.
+- **Deployment**: preview only — redeploy to push to production (myraana.com).

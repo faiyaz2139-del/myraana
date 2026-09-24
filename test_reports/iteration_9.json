@@ -1,0 +1,24 @@
+{
+  "summary": "London BC pilot (RECIPE-BC-LONDON-PILOT-V1, Jai BC) verified end-to-end. Backend pytest 9/9 pass: pilot + V1 recipes both ACTIVE with imposition_template='Jai BC' and 'London BC' respectively; quickstart PILOT_3_25x2_25 (3.25x2.25 PDF, Glossy) held=true at PRODUCTION_AUTHORIZATION_REQUIRED with fiery_state=HELD_VERIFIED, imposition_template='Jai BC', properties={size:'3.25×2.25 (bleed)', stock:'Glossy', impose_preset:'Jai BC'}; quickstart STD_3_5x2 (3.75x2.25 PDF, Matte) held=true with size='3.5×2 (no-bleed)'; wrong 7x4 geometry stops with WRONG_DIMENSIONS (held=false); invalid size_option -> 400; invalid stock -> 400; non-PDF -> 400; AI actor authorize -> 403; human authorize -> PRODUCTION_AUTHORIZED terminal; further advance -> 400 (PRINT locked); legacy /api/production/jobs with RECIPE-BC-LONDON-V1 still uses 'London BC'. Frontend: OrderDialog on /orders (New Order) shows pilot-block with pilot-size (exactly 2 options: '3.5×2 (no-bleed)', '3.25×2.25 (bleed)'), pilot-stock-matte/glossy, pilot-dropzone, pilot-file-input. Setting a 3.25x2.25 PDF via input auto-calls /production/jobs/quickstart, shows toast 'Job BC-1236 imposed (Jai BC) — held for your approval', closes dialog and navigates to /production; prod-job-properties displays 'Size: 3.25×2.25 (bleed)  Stock: Glossy  Impose: Jai BC' and prod-current-state=PRODUCTION_AUTHORIZATION_REQUIRED. EDIT dialog (Edit Order #58311) does NOT render pilot-block. Human auth gate never bypassed — no printing.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_pilot_bc.py",
+    "/app/test_reports/pytest/pilot_bc_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "production.py: quickstart safely rejects unsupported size_option/stock and empty/non-PDF payload with 400; PDF >50MB blocked. Good.",
+    "OrderDialog.startPilot: on network/parse failure it toasts detail from server. Good. Consider surfacing stop.code as a distinct UI hint (e.g., 'Wrong dimensions') in addition to the technical code.",
+    "Engine.advance at PRODUCTION_AUTHORIZED raises 400 which is fine but the message text 'PRINT is locked in V0.2' — okay for a preview build.",
+    "Auth gate: AI actor path is denied in both policy() and authorize() route (defense-in-depth).",
+    "production.py is >1200 lines — consider splitting engine / adapter / router into separate modules for maintainability."
+  ],
+  "updated_files": ["/app/backend/tests/test_pilot_bc.py", "/app/test_reports/iteration_9.json"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "Created ~3 throwaway prod_jobs (BC-1236 etc.) via quickstart during tests + 1 legacy job via /api/production/jobs. One job authorized to terminal PRODUCTION_AUTHORIZED (locked, no print). No orders created — pilot flow bypasses /api/orders.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Pilot recipe is ACTIVE and used by the New Order pilot dropzone; legacy production.jobs POST still defaults to RECIPE-BC-LONDON-V1 with 'London BC'. Do not authorize additional jobs during retests — one throwaway is enough. Test PDFs can be generated via backend.production.make_pdf_bytes(w,h,pages,with_bleed).",
+  "rca of the issue": "N/A — feature works as designed."
+}
