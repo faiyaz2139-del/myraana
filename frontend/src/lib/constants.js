@@ -1,44 +1,36 @@
 import {
   LayoutDashboard, ClipboardList, ListChecks, AlertTriangle, Package, BookOpen,
   Workflow, Cpu, Radio, FileImage, Library, ScrollText, BarChart3, Settings,
-  MapPin, Users, Building2, Factory, Activity, Sparkles,
+  MapPin, Users, Building2, Factory, Activity, Sparkles, PlusCircle,
 } from "lucide-react";
 
 export const NAV_SECTIONS = [
   {
-    title: "Core Operational",
+    title: "Make cards",
     items: [
-      { label: "Dashboard", to: "/", icon: LayoutDashboard, id: "dashboard" },
+      { label: "New Order", to: "/new", icon: PlusCircle, id: "new-order" },
+      { label: "My Jobs", to: "/production-queue", icon: ListChecks, id: "production-queue" },
+      { label: "Files & Artwork", to: "/files", icon: FileImage, id: "files" },
       { label: "Print2Go Assistant", to: "/assistant", icon: Sparkles, id: "assistant" },
-      { label: "Orders", to: "/orders", icon: ClipboardList, id: "orders" },
-      { label: "Production Queue", to: "/production-queue", icon: ListChecks, id: "production-queue" },
-      { label: "Production Engine", to: "/production", icon: Factory, id: "production" },
-      { label: "Exceptions", to: "/exceptions", icon: AlertTriangle, id: "exceptions", badgeKey: "exceptions" },
+      { label: "Dashboard", to: "/", icon: LayoutDashboard, id: "dashboard" },
     ],
   },
   {
-    title: "Production Assets",
+    title: "Boss",
+    boss: true,
     items: [
+      { label: "Approvals", to: "/production", icon: Factory, id: "production" },
+      { label: "Connect my shop", to: "/diagnostics", icon: Activity, id: "diagnostics" },
+      { label: "Orders", to: "/orders", icon: ClipboardList, id: "orders" },
+      { label: "Exceptions", to: "/exceptions", icon: AlertTriangle, id: "exceptions", badgeKey: "exceptions" },
       { label: "Products", to: "/products", icon: Package, id: "products" },
       { label: "Recipes", to: "/recipes", icon: BookOpen, id: "recipes" },
       { label: "Processes", to: "/processes", icon: Workflow, id: "processes" },
       { label: "Machines", to: "/machines", icon: Cpu, id: "machines" },
       { label: "Edge Agents", to: "/edge-agents", icon: Radio, id: "edge-agents" },
-    ],
-  },
-  {
-    title: "Knowledge & Audit",
-    items: [
-      { label: "Files & Artwork", to: "/files", icon: FileImage, id: "files" },
       { label: "SOP Library", to: "/sop-library", icon: Library, id: "sop-library" },
-      { label: "Connect my shop", to: "/diagnostics", icon: Activity, id: "diagnostics" },
       { label: "Audit Log", to: "/audit-log", icon: ScrollText, id: "audit-log" },
       { label: "Reports", to: "/reports", icon: BarChart3, id: "reports" },
-    ],
-  },
-  {
-    title: "Administration",
-    items: [
       { label: "Settings", to: "/settings", icon: Settings, id: "settings" },
       { label: "Locations", to: "/locations", icon: MapPin, id: "locations" },
       { label: "Users", to: "/users", icon: Users, id: "users" },

@@ -1,5 +1,6 @@
-import { useState, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useRef, useEffect } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
+import confetti from "canvas-confetti";
 import api from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -54,8 +55,37 @@ function StepDots({ step }) {
   );
 }
 
+// Cheerful chime via WebAudio (no asset needed)
+function playChime() {
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    const ctx = new AC();
+    [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = "triangle"; o.frequency.value = f;
+      o.connect(g); g.connect(ctx.destination);
+      const t = ctx.currentTime + i * 0.11;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.linearRampToValueAtTime(0.22, t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.4);
+      o.start(t); o.stop(t + 0.42);
+    });
+  } catch (e) { /* ignore */ }
+}
+
+function celebrate() {
+  playChime();
+  const fire = (ratio, opts) => confetti({ particleCount: Math.floor(200 * ratio), spread: 70, origin: { y: 0.6 }, ...opts });
+  fire(0.25, { spread: 26, startVelocity: 55 });
+  fire(0.35, { spread: 60 });
+  fire(0.25, { spread: 100, decay: 0.91, scalar: 0.9 });
+  setTimeout(() => confetti({ particleCount: 80, spread: 90, origin: { y: 0.5 } }), 250);
+}
+
 export default function NewOrder() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [step, setStep] = useState(1);
   const [size, setSize] = useState(null);
   const [finish, setFinish] = useState(null);
@@ -65,6 +95,22 @@ export default function NewOrder() {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null); // {ok:true, jobNo} | {ok:false, kind:'file'|'retry', msg}
   const fileInput = useRef(null);
+
+  // One-tap reorder: prefill size + finish + customer and jump to the file step.
+  useEffect(() => {
+    const p = location.state?.prefill;
+    if (!p) return;
+    const s = SIZES.find((x) => x.api === p.size_option);
+    const f = FINISHES.find((x) => x.api === p.stock);
+    if (s) setSize(s);
+    if (f) setFinish(f);
+    if (p.customer && p.customer !== "Walk-in") setCustomer(p.customer);
+    if (s && f) setStep(3);
+    navigate(location.pathname, { replace: true, state: {} });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Celebrate on success.
+  useEffect(() => { if (result?.ok) celebrate(); }, [result?.ok]);
 
   const pickFile = (list) => {
     const f = (list || [])[0];

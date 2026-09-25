@@ -1,7 +1,7 @@
 import { NavLink } from "react-router-dom";
 import { NAV_SECTIONS } from "@/lib/constants";
 import { useCollection } from "@/hooks/useCollection";
-import { Printer, ChevronsUpDown } from "lucide-react";
+import { Printer, ChevronsUpDown, Wrench } from "lucide-react";
 
 export const Sidebar = () => {
   const { data: exceptions = [] } = useCollection("exceptions", "/exceptions");
@@ -21,8 +21,9 @@ export const Sidebar = () => {
 
       <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-5">
         {NAV_SECTIONS.map((section) => (
-          <div key={section.title}>
-            <p className="px-3 mb-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-600">
+          <div key={section.title} className={section.boss ? "pt-3 mt-3 border-t border-slate-800" : ""}>
+            <p className={`px-3 mb-1.5 text-[10px] font-bold uppercase tracking-widest flex items-center gap-1.5 ${section.boss ? "text-amber-500/80" : "text-slate-600"}`}>
+              {section.boss && <Wrench className="h-3 w-3" />}
               {section.title}
             </p>
             <div className="space-y-0.5">
