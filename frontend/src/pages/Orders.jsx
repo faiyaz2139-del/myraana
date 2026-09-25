@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCollection } from "@/hooks/useCollection";
 import { PageHeader, SectionCard, Loader } from "@/components/Shared";
@@ -12,6 +12,7 @@ import { ClipboardList, Plus, FlaskConical, Search, X } from "lucide-react";
 export default function Orders() {
   const qc = useQueryClient();
   const [params, setParams] = useSearchParams();
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [showTest, setShowTest] = useState(false);
@@ -41,7 +42,7 @@ export default function Orders() {
               className={`inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border text-xs font-semibold transition-colors ${showTest ? "border-amber-400 bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400" : "border-slate-200 dark:border-slate-800 text-slate-500 hover:text-slate-700"}`}>
               <FlaskConical className="h-3.5 w-3.5" /> {showTest ? "Test data shown" : "Show test/demo data"}
             </button>
-            <Button data-testid="orders-new-button" onClick={() => { setEditing(null); setOpen(true); }} className="bg-blue-600 hover:bg-blue-700 gap-1.5">
+            <Button data-testid="orders-new-button" onClick={() => navigate("/new")} className="bg-blue-600 hover:bg-blue-700 gap-1.5">
               <Plus className="h-4 w-4" /> New Order
             </Button>
           </div>

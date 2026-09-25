@@ -5,6 +5,7 @@ import { Layout } from "@/components/Layout";
 import Dashboard from "@/pages/Dashboard";
 import Assistant from "@/pages/Assistant";
 import Orders from "@/pages/Orders";
+import NewOrder from "@/pages/NewOrder";
 import ProductionQueue from "@/pages/ProductionQueue";
 import ProductionEngine from "@/pages/ProductionEngine";
 import Exceptions from "@/pages/Exceptions";
@@ -32,6 +33,7 @@ function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/assistant" element={<Assistant />} />
           <Route path="/orders" element={<Orders />} />
+          <Route path="/new" element={<NewOrder />} />
           <Route path="/production-queue" element={<ProductionQueue />} />
           <Route path="/production" element={<ProductionEngine />} />
           <Route path="/exceptions" element={<Exceptions />} />

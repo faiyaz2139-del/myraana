@@ -61,7 +61,7 @@ export default function Dashboard() {
 
       {/* Everyday quick actions — one clear next step */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4" data-testid="quick-actions">
-        <button data-testid="qa-start-job" onClick={() => { setEditing(null); setDialogOpen(true); }}
+        <button data-testid="qa-start-job" onClick={() => navigate("/new")}
           className="group text-left rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 hover:border-blue-400 hover:shadow-md transition-all">
           <div className="h-11 w-11 rounded-xl bg-blue-600 text-white flex items-center justify-center mb-3"><Plus className="h-5 w-5" /></div>
           <p className="font-bold text-slate-900 dark:text-white">Start a job</p>
@@ -115,7 +115,7 @@ export default function Dashboard() {
                 <h2 className="text-lg font-bold tracking-tight">Production Queue</h2>
                 <p className="text-xs text-slate-400">Live status across the floor</p>
               </div>
-              <Button data-testid="new-order-button" onClick={() => { setEditing(null); setDialogOpen(true); }} className="bg-blue-600 hover:bg-blue-700 gap-1.5">
+              <Button data-testid="new-order-button" onClick={() => navigate("/new")} className="bg-blue-600 hover:bg-blue-700 gap-1.5">
                 <Plus className="h-4 w-4" /> New Order
               </Button>
             </div>

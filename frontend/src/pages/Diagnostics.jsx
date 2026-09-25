@@ -71,7 +71,7 @@ export default function Diagnostics() {
     setRunning(true);
     try {
       await api.post(`/production/edge-v2/agents/${AGENT_ID}/enqueue`, { action: "DISCOVER_CAPABILITIES", idempotency_key: `disc-${Date.now()}` });
-      if (!silent) toast.success("Running safe read-only checks…");
+      if (!silent) toast.success("Checking your printer…");
       setTimeout(() => { qc.invalidateQueries({ queryKey: ["diag-latest"] }); setRunning(false); }, 6000);
     } catch (e) {
       setRunning(false); if (!silent) toast.error("Couldn't start the checks — please try again");
@@ -180,7 +180,7 @@ export default function Diagnostics() {
             <div className="h-12 w-12 rounded-xl bg-emerald-100 dark:bg-emerald-950/50 text-emerald-600 flex items-center justify-center shrink-0"><CheckCircle2 className="h-6 w-6" /></div>
             <div className="flex-1">
               <h2 className="text-lg font-bold text-slate-900 dark:text-white">Your shop is connected</h2>
-              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">We're linked to your shop computer and run safe, read-only checks — nothing is ever printed.</p>
+              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">We're linked to your shop computer and just check that everything's working — nothing is ever printed.</p>
               <div className="mt-4 rounded-xl border border-slate-200 dark:border-slate-800 p-4">
                 <Check label="Shop computer connected" state="ok" />
                 <Check label="Printer on the network"
@@ -200,7 +200,7 @@ export default function Diagnostics() {
 
       <div className="rounded-xl border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 p-3 mb-6 flex items-center gap-3">
         <ShieldAlert className="h-5 w-5 text-amber-600 shrink-0" />
-        <p className="text-xs text-amber-800 dark:text-amber-300">Checks are read-only and never print or change anything. Live printing isn't available yet in this version.</p>
+        <p className="text-xs text-amber-800 dark:text-amber-300">These checks only look — they never print or change anything. Printing isn't turned on yet in this version.</p>
       </div>
 
       {/* Technical details hidden by default */}
