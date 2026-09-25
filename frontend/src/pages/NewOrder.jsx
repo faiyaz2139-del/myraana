@@ -115,7 +115,7 @@ export default function NewOrder() {
   const pickFile = (list) => {
     const f = (list || [])[0];
     if (!f) return;
-    if (!/\.pdf$/i.test(f.name)) { setResult({ ok: false, kind: "file", msg: "That file isn't a PDF. Please pick a PDF file." }); return; }
+    if (!/\.(pdf|png|jpe?g)$/i.test(f.name)) { setResult({ ok: false, kind: "file", msg: "Please pick a PDF, PNG or JPG file." }); return; }
     if (f.size > 50 * 1024 * 1024) { setResult({ ok: false, kind: "file", msg: "That file is too big. Please pick a smaller file." }); return; }
     setResult(null);
     setFile(f);
@@ -139,7 +139,9 @@ export default function NewOrder() {
         setResult({ ok: true, jobNo: data.job?.job_number });
       }
     } catch (e) {
-      setResult({ ok: false, kind: "retry", msg: "Something went wrong. Let's try that again." });
+      const status = e?.response?.status;
+      if (status === 400) setResult({ ok: false, kind: "file", msg: "That file didn't work for these cards. Please try a different file." });
+      else setResult({ ok: false, kind: "retry", msg: "Something went wrong. Let's try that again." });
     } finally {
       setBusy(false);
     }
@@ -243,16 +245,24 @@ export default function NewOrder() {
 
           {/* dropzone */}
           {!file ? (
-            <div data-testid="newjob-dropzone" onClick={() => fileInput.current?.click()}
+            <div data-testid="newjob-dropzone"
               onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)}
               onDrop={(e) => { e.preventDefault(); setDrag(false); pickFile(e.dataTransfer.files); }}
-              className={`max-w-md mx-auto rounded-3xl border-4 border-dashed p-10 text-center cursor-pointer transition-colors
-                ${drag ? "border-blue-500 bg-blue-50 dark:bg-blue-950/30" : "border-slate-300 dark:border-slate-700 hover:border-blue-400"}`}>
-              <input ref={fileInput} type="file" accept=".pdf" className="hidden" data-testid="newjob-file-input"
+              className={`max-w-md mx-auto rounded-3xl border-4 border-dashed p-6 sm:p-10 text-center transition-colors
+                ${drag ? "border-blue-500 bg-blue-50 dark:bg-blue-950/30" : "border-slate-300 dark:border-slate-700"}`}>
+              <input ref={fileInput} type="file" id="newjob-file-input" data-testid="newjob-file-input"
+                accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
+                aria-label="Choose a PDF, PNG or JPG file to print"
+                className="sr-only"
                 onChange={(e) => { pickFile(e.target.files); e.target.value = ""; }} />
-              <UploadCloud className="h-16 w-16 mx-auto text-blue-500 mb-3" />
-              <p className="text-xl font-extrabold text-slate-800 dark:text-slate-100">Drop your file here</p>
-              <p className="text-base text-slate-500 dark:text-slate-400 mt-1">or tap to choose it</p>
+              <UploadCloud className="h-14 w-14 sm:h-16 sm:w-16 mx-auto text-blue-500 mb-3" aria-hidden="true" />
+              <p className="text-lg sm:text-xl font-extrabold text-slate-800 dark:text-slate-100">Drop your file here</p>
+              <p className="text-sm sm:text-base text-slate-500 dark:text-slate-400 mt-1 mb-4">or use the button below</p>
+              <Button type="button" data-testid="newjob-choose-file" onClick={() => fileInput.current?.click()}
+                className="h-14 px-8 text-lg rounded-2xl bg-blue-600 hover:bg-blue-700 gap-2">
+                <UploadCloud className="h-5 w-5" /> Choose a file
+              </Button>
+              <p className="text-xs text-slate-400 mt-3">PDF, PNG or JPG</p>
             </div>
           ) : (
             <div className="max-w-md mx-auto rounded-3xl border-4 border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30 p-5 flex items-center gap-3" data-testid="newjob-file-chosen">
@@ -282,6 +292,9 @@ export default function NewOrder() {
               className="w-full h-16 text-2xl font-extrabold rounded-3xl bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-200 dark:disabled:bg-slate-800 disabled:text-slate-400 shadow-lg gap-2">
               {busy ? (<><Loader2 className="h-7 w-7 animate-spin" /> Setting up your cards…</>) : (<><Check className="h-7 w-7" strokeWidth={3} /> Make it!</>)}
             </Button>
+            {!file && !busy && (
+              <p data-testid="newjob-make-hint" className="text-center text-sm text-slate-500 dark:text-slate-400 mt-3">Add your file first, then tap “Make it!”.</p>
+            )}
           </div>
         </div>
       )}

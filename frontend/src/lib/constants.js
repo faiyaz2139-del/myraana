@@ -9,7 +9,7 @@ export const NAV_SECTIONS = [
     title: "Make cards",
     items: [
       { label: "New Order", to: "/new", icon: PlusCircle, id: "new-order" },
-      { label: "My Jobs", to: "/production-queue", icon: ListChecks, id: "production-queue" },
+      { label: "Jobs", to: "/production-queue", icon: ListChecks, id: "production-queue" },
       { label: "Files & Artwork", to: "/files", icon: FileImage, id: "files" },
       { label: "Print2Go Assistant", to: "/assistant", icon: Sparkles, id: "assistant" },
       { label: "Dashboard", to: "/", icon: LayoutDashboard, id: "dashboard" },
@@ -19,7 +19,7 @@ export const NAV_SECTIONS = [
     title: "Boss",
     boss: true,
     items: [
-      { label: "Approvals", to: "/production", icon: Factory, id: "production" },
+      { label: "Boss", to: "/production", icon: Factory, id: "production" },
       { label: "Connect my shop", to: "/diagnostics", icon: Activity, id: "diagnostics" },
       { label: "Orders", to: "/orders", icon: ClipboardList, id: "orders" },
       { label: "Exceptions", to: "/exceptions", icon: AlertTriangle, id: "exceptions", badgeKey: "exceptions" },

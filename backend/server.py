@@ -484,6 +484,10 @@ async def create_recipe(payload: RecipeCreate):
 
 @api_router.delete("/recipes/{recipe_id}")
 async def delete_recipe(recipe_id: str):
+    PROTECTED = {"RECIPE-BC-LONDON-V1", "RECIPE-BC-LONDON-PILOT-V1"}
+    doc = await db.recipes.find_one({"id": recipe_id})
+    if doc and doc.get("recipe_id") in PROTECTED:
+        raise HTTPException(400, "This is an active production recipe and can't be deleted.")
     await db.recipes.delete_one({"id": recipe_id})
     return {"ok": True}
 

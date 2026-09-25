@@ -3,12 +3,12 @@ import { NAV_SECTIONS } from "@/lib/constants";
 import { useCollection } from "@/hooks/useCollection";
 import { Printer, ChevronsUpDown, Wrench } from "lucide-react";
 
-export const Sidebar = () => {
+export const Sidebar = ({ open = false, onClose = () => {} }) => {
   const { data: exceptions = [] } = useCollection("exceptions", "/exceptions");
   const openExceptions = exceptions.filter((e) => !e.resolved).length;
 
   return (
-    <aside className="fixed top-0 bottom-0 left-0 w-64 bg-slate-900 dark:bg-[#030712] text-slate-300 border-r border-slate-800 z-40 flex flex-col">
+    <aside className={`fixed top-0 bottom-0 left-0 w-64 bg-slate-900 dark:bg-[#030712] text-slate-300 border-r border-slate-800 z-50 flex flex-col transition-transform duration-200 md:translate-x-0 ${open ? "translate-x-0" : "-translate-x-full"}`}>
       <div className="px-5 py-5 border-b border-slate-800 flex items-center gap-3">
         <div className="bg-blue-600 text-white h-10 w-10 rounded-xl flex items-center justify-center shadow-lg shadow-blue-600/20">
           <Printer className="h-5 w-5" />
@@ -32,6 +32,7 @@ export const Sidebar = () => {
                   key={item.id}
                   to={item.to}
                   end={item.to === "/"}
+                  onClick={onClose}
                   data-testid={`sidebar-nav-${item.id}`}
                   className={({ isActive }) =>
                     `group flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all ${

@@ -2,11 +2,11 @@ import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "@/hooks/useTheme";
 import api from "@/lib/api";
-import { Search, Bell, HelpCircle, Sun, Moon, ChevronDown, Loader2, ClipboardList, Package, BookOpen, FileImage } from "lucide-react";
+import { Search, Bell, HelpCircle, Sun, Moon, ChevronDown, Loader2, ClipboardList, Package, BookOpen, FileImage, Menu } from "lucide-react";
 
 const TYPE_ICON = { order: ClipboardList, product: Package, recipe: BookOpen, file: FileImage };
 
-export const Topbar = () => {
+export const Topbar = ({ onMenu = () => {} }) => {
   const { theme, toggle } = useTheme();
   const navigate = useNavigate();
   const [q, setQ] = useState("");
@@ -67,7 +67,15 @@ export const Topbar = () => {
   };
 
   return (
-    <header className="sticky top-0 z-30 h-16 bg-white/85 dark:bg-slate-900/85 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-6 flex items-center gap-4">
+    <header className="sticky top-0 z-30 h-16 bg-white/85 dark:bg-slate-900/85 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-4 sm:px-6 flex items-center gap-3 sm:gap-4">
+      <button
+        data-testid="mobile-menu-button"
+        onClick={onMenu}
+        aria-label="Open menu"
+        className="md:hidden h-10 w-10 -ml-1 shrink-0 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-300 transition-colors"
+      >
+        <Menu className="h-6 w-6" />
+      </button>
       <div className="relative flex-1 max-w-xl" ref={boxRef}>
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
         {loading && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 animate-spin" />}

@@ -53,15 +53,15 @@ function ProgressBar({ idx, stopped }) {
         return (
           <div key={s.label} className="flex items-center flex-1 last:flex-none">
             <div className="flex flex-col items-center gap-1">
-              <div className={`h-10 w-10 rounded-full flex items-center justify-center transition-all ${color}`}>
-                <Icon className="h-5 w-5" strokeWidth={2.5} />
+              <div className={`h-8 w-8 sm:h-10 sm:w-10 rounded-full flex items-center justify-center transition-all ${color}`}>
+                <Icon className="h-4 w-4 sm:h-5 sm:w-5" strokeWidth={2.5} />
               </div>
-              <span className={`text-[11px] font-bold ${current ? "text-blue-600 dark:text-blue-400" : isStop ? "text-rose-600" : "text-slate-400"}`}>
+              <span className={`text-[9px] sm:text-[11px] font-bold ${current ? "text-blue-600 dark:text-blue-400" : isStop ? "text-rose-600" : "text-slate-400"}`}>
                 {isStop ? "Stopped" : s.label}
               </span>
             </div>
             {i < STEPS.length - 1 && (
-              <div className={`h-1.5 flex-1 mx-1 rounded-full mb-5 ${(!stopped && i < idx) ? "bg-emerald-500" : "bg-slate-200 dark:bg-slate-800"}`} />
+              <div className={`h-1.5 flex-1 mx-0.5 sm:mx-1 rounded-full mb-5 ${(!stopped && i < idx) ? "bg-emerald-500" : "bg-slate-200 dark:bg-slate-800"}`} />
             )}
           </div>
         );
@@ -79,9 +79,9 @@ export default function ProductionQueue() {
 
   return (
     <div className="max-w-3xl mx-auto">
-      <div className="flex items-center justify-between mb-8 gap-3">
+      <div className="flex items-center justify-between flex-wrap mb-8 gap-3">
         <div>
-          <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white">My jobs</h1>
+          <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white">Jobs</h1>
           <p className="text-base text-slate-500 dark:text-slate-400 mt-1">See how your cards are doing.</p>
         </div>
         <Button data-testid="myjobs-new" onClick={() => navigate("/new")} className="h-12 px-5 text-base rounded-2xl bg-emerald-500 hover:bg-emerald-600 gap-2 shrink-0">
