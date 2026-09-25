@@ -252,6 +252,50 @@ def expand_canvas_to_bleed_bytes(src: bytes, orientation: str) -> bytes:
     return buf.getvalue()
 
 
+IMAGE_EXTS = (".png", ".jpg", ".jpeg")
+
+
+def is_image_upload(filename: str, content_type: str = "") -> bool:
+    fn = (filename or "").lower()
+    ct = (content_type or "").lower()
+    return fn.endswith(IMAGE_EXTS) or ct in ("image/png", "image/jpeg", "image/jpg")
+
+
+def image_to_print_ready_pdf(img_bytes: bytes, size_option: str):
+    """Convert a PNG/JPG into a print-ready, bleed-sized single-page PDF matching the chosen
+    card geometry (cover-fit, centered, full bleed) with TrimBox/BleedBox. Returns (pdf, orientation)."""
+    from PIL import Image, ImageOps
+    from reportlab.pdfgen import canvas as rl_canvas
+    from reportlab.lib.utils import ImageReader
+    img = Image.open(io.BytesIO(img_bytes))
+    img = ImageOps.exif_transpose(img)      # honor camera/EXIF rotation
+    img = img.convert("RGB")                 # flatten alpha / CMYK
+    iw, ih = img.size
+    orientation = "LANDSCAPE" if iw >= ih else "PORTRAIT"
+    opt = SIZE_OPTIONS.get(size_option or "STD_3_5x2")
+    aw, ah = (PILOT_SIZE if (opt and opt["pilot"]) else BLEED_SIZE)[orientation]
+    page_w, page_h = aw * IN, ah * IN
+    # cover-fit: scale so the image fully covers the page, center-crop overflow (true full bleed)
+    scale = max(page_w / iw, page_h / ih)
+    dw, dh = iw * scale, ih * scale
+    x, y = (page_w - dw) / 2, (page_h - dh) / 2
+    buf = io.BytesIO()
+    c = rl_canvas.Canvas(buf, pagesize=(page_w, page_h))
+    c.drawImage(ImageReader(img), x, y, width=dw, height=dh)
+    c.showPage()
+    c.save()
+    reader = PdfReader(io.BytesIO(buf.getvalue()))
+    writer = PdfWriter()
+    writer.add_page(reader.pages[0])
+    inset = BLEED * IN
+    p = writer.pages[0]
+    p.trimbox = RectangleObject([inset, inset, page_w - inset, page_h - inset])
+    p.bleedbox = RectangleObject([0, 0, page_w, page_h])
+    out = io.BytesIO()
+    writer.write(out)
+    return out.getvalue(), orientation
+
+
 def copy_pdf_bytes(src: bytes) -> bytes:
     reader = PdfReader(io.BytesIO(src))
     writer = PdfWriter()
@@ -725,6 +769,15 @@ def build_router(db):
             raise HTTPException(400, "Empty file")
         if len(data) > 50 * 1024 * 1024:
             raise HTTPException(400, "File exceeds 50MB")
+        orientation = "LANDSCAPE"
+        out_filename = file.filename
+        if is_image_upload(file.filename, file.content_type):
+            try:
+                data, orientation = image_to_print_ready_pdf(data, size_option)
+            except Exception:
+                raise HTTPException(400, "We couldn't read that picture. Please try a PNG, JPG or PDF.")
+            stem = Path(file.filename or "artwork").stem
+            out_filename = f"{stem} (from image).pdf"
         try:
             meta = measure_pdf_bytes(data)
         except Exception:
@@ -742,7 +795,7 @@ def build_router(db):
             "location_id": LOCATION_LONDON["id"], "location": LOCATION_LONDON["name"],
             "product_code": recipe.get("product_code", PRODUCT_BC["code"]),
             "recipe_id": recipe_id, "recipe_version": recipe["version"], "recipe_snapshot": recipe,
-            "customer": customer, "orientation": "LANDSCAPE", "sides": 1,
+            "customer": customer, "orientation": orientation, "sides": 1,
             "safe_area_ok": True, "protected_content_review": False, "safe_area_unknown": False,
             "size_option": size_option, "stock": stock, "imposition_template": template,
             "properties": {"size": size_label, "stock": stock, "impose_preset": template},
@@ -753,7 +806,7 @@ def build_router(db):
         j = await engine.get(job["id"])
         await engine.audit(j, "system", "JOB_CREATED", "ALLOW",
                            evidence={"recipe_id": recipe_id, "size": size_label, "stock": stock, "impose_preset": template})
-        rec = await engine.add_file(j, "ORIGINAL", data, customer, metadata=meta, filename=file.filename)
+        rec = await engine.add_file(j, "ORIGINAL", data, customer, metadata=meta, filename=out_filename)
         await db.prod_jobs.update_one({"id": job["id"]}, {"$set": {"state": "ARTWORK_RECEIVED", "updated_at": now_iso()}})
         j = await engine.get(job["id"])
         await engine.audit(j, customer, "ARTWORK_RECEIVED", "ALLOW", input_hash=rec["sha256"],
