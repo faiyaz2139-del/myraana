@@ -1,0 +1,21 @@
+{
+  "summary": "Frontend-only bug-fix round for Print2Go: (1) accessible upload with visible 'Choose a file' button + accessible file input + PDF/PNG/JPG accept; (2) disabled Make-it hint; (3) friendly file-type errors; (4) 'Jobs'/'Boss' nav renames; (5) mobile responsive drawer + hamburger + no horizontal scroll; (6) protected recipe RECIPE-BC-LONDON-V1; (7) regressions (one-tap reorder, wizard Back). ALL PASS via Playwright DOM assertions. Verified: newjob-choose-file visible + keyboard-focusable + accessible name 'Choose a file'; input#newjob-file-input has aria-label 'Choose a PDF, PNG or JPG file to print' and accept='.pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg'; Make-it disabled + newjob-make-hint ('Add your file first, then tap “Make it!”.') shown before file, hint disappears + button enables after 252x144pt PDF attached; button height=64px; success screen 'All done!' -> job BC-1267 assigned. Non-PDF (.txt) surfaces newjob-error 'Please pick a PDF, PNG or JPG file.' with single newjob-error-action 'Choose a different file' and NO error codes. Sidebar shows exactly {New Order, Jobs (sidebar-nav-production-queue), Files & Artwork, Print2Go Assistant, Dashboard} in Make cards; Boss group starts with 'Boss' (sidebar-nav-production -> /production). MOBILE 375x812: no horizontal page scroll on /new, /production-queue, /orders, /production (scrollWidth==375); mobile-menu-button visible on mobile, hidden on desktop (md hidden); hamburger click slides drawer in (link x: -244 -> 12) and shows sidebar-backdrop; clicking a nav link navigates + closes drawer (x back to -244); backdrop click also closes drawer. Jobs page mobile: 30 job cards no overflow (sw==cw==341), job-progress no overflow (sw==cw==301). Desktop >=1280: no hamburger + sidebar always visible. Regressions: 'Make again' -> /new opens on Step 3 with Normal card + 'Not shiny' prefilled (30 reorder buttons on Jobs list); wizard Back (newjob-back testid) returns to Step 1. Backend API check (allowed here): GET /api/recipes contains RECIPE-BC-LONDON-V1 (Business Card — London (V1), ACTIVE, id REC-a5720e53d1ce); DELETE returns HTTP 400 with 'This is an active production recipe and can't be deleted.' and the recipe still exists.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "NewOrder.jsx: accessible upload pattern is clean (sr-only input + visible Button + labeled dropzone). aria-label present; keyboard focus works.",
+    "Sidebar.jsx: drawer state (translate-x-full <-> translate-x-0) with onClose in NavLink click and backdrop click both verified. No a11y issues seen.",
+    "Layout.jsx: overflow-x-hidden on root plus md:pl-64 correctly avoids horizontal scroll on mobile viewports.",
+    "Non-blocking regression from prior iter: /machines still emits duplicate React key warnings for 'TEST_Machine' (seeded duplicates) — not in scope for this iteration."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (api spot-checks only)", "frontend": "100%"},
+  "test_credentials": "None - app is open/demo",
+  "seed_data_creation": "Created BC-1267 during happy-path (New Order upload). Valid 252x144pt PDF at /tmp/bc.pdf via reportlab.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All 7 features PASS. Playwright's is_visible() returns true for translate-x-full off-screen drawer, so verify drawer state via bounding-box x-position (open ~x>=0, closed ~x=-244) or getComputedStyle transform. For mobile tests explicitly set_viewport_size(375,812) — the screenshot tool defaults to desktop. Slow XHR: 30-45s wait_for_selector on /production-queue for job-card-*. Valid 3.5x2 PDF: reportlab Canvas('/tmp/bc.pdf', pagesize=(252,144)).",
+  "rca of the issue": "N/A - all bug fixes verified working"
+}
