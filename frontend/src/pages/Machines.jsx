@@ -56,12 +56,12 @@ export default function Machines() {
       </div>
       {isLoading ? <Loader /> : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {machines.map((m) => {
+          {machines.map((m, idx) => {
             const live = liveMap[m.name.toLowerCase()];
             const s = MS[m.status] || MS.offline;
             const liveMeta = live ? (DEVICE_STATUS[live.status] || DEVICE_STATUS.UNKNOWN) : null;
             return (
-              <SectionCard key={m.id} className="p-5" data-testid={`machine-card-${m.id}`}>
+              <SectionCard key={`${m.id}-${idx}`} className="p-5" data-testid={`machine-card-${m.id}`}>
                 <div className="flex items-start justify-between">
                   <div className="h-11 w-11 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-500"><Cpu className="h-5 w-5" /></div>
                   {live
