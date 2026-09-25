@@ -72,7 +72,7 @@ function ProgressBar({ idx, stopped }) {
 
 export default function ProductionQueue() {
   const navigate = useNavigate();
-  const { data: jobs = [], isLoading } = useCollection("prod-jobs", "/production/jobs");
+  const { data: jobs = [], isLoading } = useCollection("prod-jobs", "/production/jobs", { refetchInterval: 4000, refetchOnWindowFocus: true });
   const recent = jobs.slice(0, 30);
 
   const makeAgain = (j) => navigate("/new", { state: { prefill: { size_option: j.size_option, stock: j.stock, customer: j.customer } } });
