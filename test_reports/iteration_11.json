@@ -1,0 +1,35 @@
+{
+  "summary": "Frontend-only testing of Print2Go 5-year-old flows (New Order 3-step wizard, Production Queue, Connect-my-shop). Verified all navigation entry-points to /new, wizard step transitions (1->2->3), Back button on steps 2 and 3, disabled Make it button state, non-PDF friendly error, valid PDF happy path (backend returned held=true, job number BC-1263 assigned, success screen 'All done!' with truthful 'The boss will press go' copy), See my jobs -> /production-queue, Make more cards -> reset to step 1, Production Queue rendering 4 friendly columns with correct titles and no jargon, and Diagnostics not-connected UI. All 4 queue columns rendered after ~1s (not the ~10s worst-case). Only one issue found: Diagnostics visible-area copy contains the phrase 'read-only' which the spec explicitly bans from the visible area.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "/diagnostics (not-connected connect-status card)",
+        "issues": [
+          "Visible copy on step-1 description reads: 'It links Print2Go to your printer and only runs safe, read-only checks — it never prints anything.' The word 'read-only' is on the spec's banned-in-visible-area list. Suggested rewrite: 'It links Print2Go to your printer and only looks — it never prints anything.'",
+          "File: /app/frontend/src/pages/Diagnostics.jsx line ~128"
+        ]
+      }
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Remove the phrase 'read-only' from the visible Connect-my-shop not-connected copy in Diagnostics.jsx (~line 128). The hidden 'Show technical details' section may keep technical terms; only the always-visible not-connected card needs the fix."
+  ],
+  "critical_code_review_comments": [
+    "NewOrder.jsx: friendly error path is unified (both client-side non-pdf validation and backend {stop} response render newjob-error with a single newjob-error-action button and NO error codes) — matches spec.",
+    "NewOrder.jsx pickFile only checks extension (\\.pdf$) not MIME — acceptable for a 5-year-old flow but could be tightened.",
+    "ProductionQueue.jsx uses o.order_number.replace('#','') for testid without null-guard; if any order lacks order_number this would throw. Defensive coding suggestion (non-blocking).",
+    "Diagnostics.jsx: CONNECTOR_URL is built from process.env.REACT_APP_BACKEND_URL directly (bypasses the api client). OK for a plain <a href> download link.",
+    "Success copy 'The boss will press go' is intentional per user note and confirmed truthful (job goes to held state) — not a bug."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (skipped)", "frontend": "~95%"},
+  "seed_data_creation": "Created 2 held demo jobs via POST /api/production/jobs/quickstart during flow testing (customer 'TEST Walk-in', 3.5x2 pt PDF). Latest job number returned: BC-1263.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "New Order 3-step wizard, all nav wiring (qa-start-job, new-order-button, orders-new-button), non-PDF friendly error, valid-PDF happy path with success screen + both success buttons, and Production Queue 4 friendly columns (no jargon) all verified against the live preview URL. Only outstanding change is the 'read-only' phrase in Diagnostics not-connected visible copy. Reportlab is installed in this env; PDF generator: reportlab.pdfgen.canvas.Canvas('/tmp/bc.pdf', pagesize=(252,144)); c.showPage(); c.save().",
+  "rca of the issue": "Diagnostics.jsx line ~128 hard-codes the description text containing 'read-only'. Fix: replace 'safe, read-only checks' with wording like 'safe checks' or 'safe look-only checks' to comply with the plain-language rule that bans 'read-only' from the visible area."
+}

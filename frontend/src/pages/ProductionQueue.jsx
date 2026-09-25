@@ -44,7 +44,7 @@ export default function ProductionQueue() {
 
                 <div className="p-3 space-y-3">
                   {items.map((o) => (
-                    <SectionCard key={o.id} className="p-4 rounded-2xl" data-testid={`queue-card-${o.order_number.replace("#", "")}`}>
+                    <SectionCard key={o.id} className="p-4 rounded-2xl" data-testid={`queue-card-${(o.order_number || o.id).replace("#", "")}`}>
                       <div className="flex items-center gap-3 mb-3">
                         <ProductThumb category={o.category} name={o.product_name} size="sm" />
                         <div className="min-w-0">

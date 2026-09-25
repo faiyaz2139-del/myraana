@@ -166,3 +166,14 @@ Package the Windows edge agent so branch staff can install it themselves; the "C
 - Verified (preview): download returns valid 17.6MB zip with all 18 entries + intact embedded-python structure (`python311._pth` present); pairing-token mint OK; page renders all steps/buttons (screenshot).
 - **Pending on-prem**: actual Windows unzip/install/startup/pairing must be validated on the London shop PC (cannot be run from this Linux env). Ships preview-only; user redeploys to myraana.com.
 
+## V1.2 — "A 5-year-old can use it" daily-flow redesign (2026-06)
+User rule: staff-facing daily flow must be effortless — big buttons, pictures, plain words, green=go/red=stop, no jargon. Applied to New Order, Production Queue, Connect-my-shop first. Diagnostics stays technical (boss's tool).
+- **New Order = full-screen 3-step picture wizard** at new route `/new` (`pages/NewOrder.jsx`): (1) Pick your card — two real card pictures (Normal card = STD_3_5x2, Full colour card = PILOT_3_25x2_25); (2) Shiny or not shiny — Matte/Glossy as pictures; (3) Add your file — chosen chips + optional "Who is it for?" + big dropzone + one big green "Make it!" button (disabled until a PDF is added). Calls existing `POST /api/production/jobs/quickstart` (unchanged). Success screen: big green check + "All done!" + "See my jobs" / "Make more cards". Truthful copy: "the boss will press go" (jobs go to HOLD; nothing physically prints).
+- **Pictures** generated (Gemini) + stored at `/app/frontend/public/cards/` (size_standard, size_edge, finish_matte, finish_glossy).
+- **Errors are friendly**: non-PDF or backend {stop} → plain message + ONE next-step button (`newjob-error-action`), never a code.
+- **Entry points rewired** to `/new`: Dashboard `qa-start-job` + `new-order-button`, Orders `orders-new-button`. `OrderDialog` retained only for editing existing orders (boss/edit path).
+- **Production Queue** (`pages/ProductionQueue.jsx`) rewritten: 4 big colour-coded columns — Getting ready / Ready to print / Printing now / Needs a look — with plain status lines ("We're checking the file", "Waiting for the boss to press go", "Your cards are being made"). No jargon, no raw state codes.
+- **Connect my shop** (`Diagnostics.jsx`) visible copy de-jargoned (removed "read-only"/"live printing"); the hidden "Show technical details" section stays technical for the boss.
+- Verified: testing agent iteration_11 → frontend ~95%, all flows pass (wizard steps + back + disabled state + non-PDF error + valid-PDF happy path with success screen + both buttons + nav wiring + queue 4 columns no-jargon). Sole issue (visible "read-only" phrase) fixed post-test. Note: preview headless XHR can take ~10s to load the queue on cold deep-link — not a bug.
+- **Backlog (deferred)**: "Boss area" navigation grouping (approvals/pairing/settings out of daily flow) — user said "first" for these 3 pages, so IA reorg is a follow-up. Ships preview-only; user redeploys.
+

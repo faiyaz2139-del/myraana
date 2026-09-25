@@ -125,7 +125,7 @@ export default function Diagnostics() {
             <div className="h-12 w-12 rounded-xl bg-amber-100 dark:bg-amber-950/50 text-amber-600 flex items-center justify-center shrink-0"><PlugZap className="h-6 w-6" /></div>
             <div className="flex-1">
               <h2 className="text-lg font-bold text-slate-900 dark:text-white">Your shop isn't connected yet</h2>
-              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Install the free Print2Go Connector on your shop computer once. It links Print2Go to your printer and only runs safe, read-only checks — it never prints anything.</p>
+              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Install the free Print2Go Connector on your shop computer once. It links Print2Go to your printer and only checks that things are working — it never prints anything.</p>
 
               <div className="mt-5 space-y-5">
                 {/* Step 1 — download */}
