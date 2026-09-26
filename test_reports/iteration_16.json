@@ -1,0 +1,22 @@
+{
+  "summary": "Verified Print2Go Connector download endpoint behavior + pairing regression. (A) With CONNECTOR_EXE_URL unset, GET /api/production/edge-v2/connector/download returns 503 with publish guidance containing all required needles ('Save to Github', 'Build Connector', 'CONNECTOR_EXE_URL', 'Redeploy'), and content-type is NOT zip/octet-stream. (B) After adding CONNECTOR_EXE_URL to /app/backend/.env and restarting backend, the same endpoint returns 302 with Location header exactly matching the configured URL. (C) After reverting .env and restarting, endpoint returns 503 again. Pairing regression (mint token, register REAL agent, empty/invalid token -> 401, single-use enforced) all pass. /app/backend/.env restored to exact original state (MONGO_URL, DB_NAME, CORS_ORIGINS, EMERGENT_LLM_KEY only).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_connector_download.py",
+    "/app/backend/tests/test_edge_v2_pairing.py",
+    "/app/test_reports/pytest/connector_download.xml",
+    "/app/test_reports/pytest/pairing.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "download_connector handler is clean and correct: RedirectResponse when CONNECTOR_EXE_URL set, FileResponse fallback for edge_agent/dist/Print2GoConnector.exe (absent in Linux preview -- correct), else HTTPException 503 with detailed publish steps. No ZIP fallback path remains."
+  ],
+  "updated_files": ["/app/backend/tests/test_connector_download.py"],
+  "success_rate": {"backend": "100% (8/8)", "frontend": "n/a (skipped per request)"},
+  "test_credentials": "None - open app",
+  "seed_data_creation": "None (pairing tests mint enrollment tokens dynamically)",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "test_connector_download.py mutates /app/backend/.env and restarts backend for the 302 test class (adds CONNECTOR_EXE_URL then reverts in teardown_class). If the run is aborted mid-way, manually verify /app/backend/.env has only MONGO_URL, DB_NAME, CORS_ORIGINS, EMERGENT_LLM_KEY. Run with: python -m pytest backend/tests/test_connector_download.py -v -o addopts='' (pytest.ini has xdist which requires disabling to serialize env mutation)."
+}
