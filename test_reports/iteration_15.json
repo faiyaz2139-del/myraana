@@ -1,0 +1,26 @@
+{
+  "summary": "Verified Print2Go 'Connect my shop' enhancements end-to-end. Backend pytest (4/4 new + 5/5 regression PASS): heartbeat with capabilities.fiery_reachable=true flips agent.fiery_reachable=true and live_state=REAL_ONLINE in GET /agents; heartbeat without capabilities (or =false) leaves fiery_reachable=false (unknown). /connector/download returns 503 by design. Frontend /diagnostics: (1) after clicking [data-testid=get-pairing-code], [data-testid=pairing-code] renders AND [data-testid=pairing-waiting] shows 'Waiting for your shop to connect… we'll turn green the moment it checks in. This code refreshes itself so it never goes stale.' — spinner persists while not connected. (2) With background HMAC heartbeats (every 4s) sending capabilities.fiery_reachable=true for P2G-LONDON-EDGE-01, page flips to 'Your shop is connected' and 'Printer on the network — Working' with hint 'PX300 is reachable.' (green). (3) With heartbeats sent WITHOUT capabilities, connected card still shown but 'Printer on the network — Not confirmed yet' (orange/unknown) — green is evidence-based. (4) Regression: pairing loop from iteration_14 (empty/invalid token->401, single-use enforced) still passes.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_edge_v2_fiery.py",
+    "/app/backend/tests/test_edge_v2_pairing.py",
+    "/app/test_reports/pytest/fiery_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Diagnostics.jsx correctly derives netState from agent.fiery_reachable === true || f.PX300_REACHABLE === true — Boolean, evidence-based; unknown/false correctly renders 'Not confirmed yet'.",
+    "pairing-waiting is gated on (pairingCode && !online) which is the correct visibility rule per requirements.",
+    "Auto-refresh interval 180000ms (3 min) is timer-based via useEffect setInterval cleaned up on unmount / pairing state change — matches spec.",
+    "Backend production.py:1090 stores caps.fiery_reachable via bool(caps.get('fiery_reachable')) — coerces None to False, so 'unknown' externally becomes false which the UI treats as not-green (correct).",
+    "GET /connector/download returning 503 in preview (no CONNECTOR_EXE_URL) is by design; CI-built exe not testable here — expected."
+  ],
+  "updated_files": ["/app/backend/tests/test_edge_v2_fiery.py"],
+  "success_rate": {"backend": "100% (4/4 new + 5/5 regression = 9/9)", "frontend": "100%"},
+  "test_credentials": "None - open/demo app",
+  "seed_data_creation": "Multiple ENROLL-* enrollment tokens minted/consumed for P2G-LONDON-EDGE-01 during testing; agent left with fiery_reachable=false (no-caps heartbeat state).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "New tests live at /app/backend/tests/test_edge_v2_fiery.py. To reproduce UI: mint enrollment token -> register REAL agent -> start HMAC heartbeat loop every 4s (timeout 30s). Toggle capabilities.fiery_reachable to see 'Printer on the network' flip green<->'Not confirmed yet'. UA header required (Cloudflare rejects default python-urllib). Auto-refresh (3 min) not waited out — only asserted the pairing-waiting element persists alongside pairing-code while not connected.",
+  "rca of the issue": "Not a bug fix cycle — this iteration validated three new enhancements: (a) pairing-waiting spinner element renders whenever a pairing code is displayed and shop not yet connected, (b) 'Printer on the network' Check turns green only when real agent heartbeats report capabilities.fiery_reachable=true (evidence-based, driven by agent heartbeat), (c) pairing code auto-refreshes every 3 min (timer-based; existence of setInterval(180000) verified via code review — not waited out per instructions)."
+}
