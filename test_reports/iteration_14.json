@@ -1,0 +1,21 @@
+{
+  "summary": "Verified Edge Agent V2 pairing loop end-to-end. Backend pytest (5/5 PASS): happy-path mint->register(token)->HMAC heartbeat returns real_online=true; negative register with no/invalid token returns 401 (original bug reproduction confirmed fixed by client change); single-use token cannot be reused (401 on 2nd register); /connector/download returns 503 as expected in preview (CONNECTOR_EXE_URL unset). Frontend /diagnostics: with fresh mint+register+background HMAC heartbeats every 4s for P2G-LONDON-EDGE-01, the not-connected card (install-step-1/2/3) disappeared within ~4s and 'Your shop is connected' + 'Shop computer connected — Working' rendered. After heartbeats aged out (>30s), not-connected card returned and get-pairing-code button minted+displayed a fresh ENROLL-XXXX token via [data-testid=pairing-code] with toast 'Pairing code ready'.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": ["/app/backend/tests/test_edge_v2_pairing.py", "/app/test_reports/pytest/pairing_results.xml"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "edge_v2_register correctly enforces enrollment_token when active tokens exist and single-use consumption works — matches the bug description and confirms the client-side fix (agent now sends token) resolves the OFFLINE-forever issue.",
+    "HMAC heartbeat scheme (X-P2G-Agent/Timestamp/Signature over METHOD\\nPATH\\nTS\\nsha256(body)) verified working; real_online flips within one heartbeat.",
+    "Diagnostics polls ~every 4-5s and flips view based on agent.real_online; UX is correct.",
+    "GET /connector/download returning 503 in preview is by design (no CONNECTOR_EXE_URL); expected until GitHub Actions publishes the exe. Not a bug."
+  ],
+  "updated_files": ["/app/backend/tests/test_edge_v2_pairing.py"],
+  "success_rate": {"backend": "100% (5/5)", "frontend": "100%"},
+  "test_credentials": "None - open/demo app",
+  "seed_data_creation": "Multiple ENROLL-* enrollment tokens minted and consumed during testing on agent P2G-LONDON-EDGE-01.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Pairing tests live at /app/backend/tests/test_edge_v2_pairing.py. For diagnostics UI verification: run background thread sending HMAC heartbeats every 4s (timeout is 30s), then load /diagnostics — install-step-1 testid disappears in ~4s and 'Your shop is connected' renders. Do NOT try to build the Windows .exe (CI-only).",
+  "rca of the issue": "Original bug: edge agent registered with empty enrollment_token, so agent never received a signing_secret usable for HMAC heartbeats, keeping real_online=false and /diagnostics stuck on 'not connected'. Fix (client-side agent.py): prompts operator for pairing code on first run, sends it on /register, re-prompts on 401, persists identity, self-registers Windows auto-start. Backend register/heartbeat unchanged and validated green."
+}
