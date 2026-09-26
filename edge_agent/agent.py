@@ -28,11 +28,25 @@ from cryptography.fernet import Fernet
 import capabilities
 import discovery
 
-BASE_DIR = Path(__file__).parent
-CONFIG_PATH = BASE_DIR / "config.json"
-KEY_PATH = BASE_DIR / "agent.key"
-SECRETS_PATH = BASE_DIR / "secrets.enc"
-IDEMPOTENCY_PATH = BASE_DIR / "executed_actions.json"
+DEFAULT_CLOUD_URL = "https://myraana.com"
+
+
+def _data_dir() -> Path:
+    """Persistent, writable per-machine data dir. Critical for a PyInstaller one-file
+    .exe (its own folder is a temp extraction dir), and so pairing survives restarts."""
+    if os.name == "nt":
+        base = Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "Print2Go" / "Connector"
+    else:
+        base = Path.home() / ".print2go"
+    base.mkdir(parents=True, exist_ok=True)
+    return base
+
+
+DATA_DIR = _data_dir()
+CONFIG_PATH = DATA_DIR / "config.json"
+KEY_PATH = DATA_DIR / "agent.key"
+SECRETS_PATH = DATA_DIR / "secrets.enc"
+IDEMPOTENCY_PATH = DATA_DIR / "executed_actions.json"
 
 START_TS = time.time()
 
@@ -57,18 +71,27 @@ log.addFilter(RedactFilter())
 
 
 def first_run_setup():
-    """Interactive first-run: ask ONLY for SaaS URL + registration token."""
-    print("=== Print2Go Edge Agent — First-Run Setup ===")
-    url = input("SaaS server URL (https://...): ").strip()
-    token = input("Edge Agent registration token (blank if none): ").strip()
+    """Interactive first-run: ask ONLY for the single-use pairing code.
+    The cloud URL is baked in (overridable via P2G_CLOUD_URL)."""
+    print("=" * 52)
+    print("   Print2Go Connector — first-time setup")
+    print("=" * 52)
+    print("\nOn a Print2Go computer, open 'Connect my shop' and click")
+    print("'Get pairing code', then paste that code here.\n")
+    token = ""
+    while not token:
+        token = input("Paste your pairing code and press Enter: ").strip()
+        if not token:
+            print("  A pairing code is required to connect this shop.")
+    url = (os.environ.get("P2G_CLOUD_URL") or DEFAULT_CLOUD_URL).strip()
     cfg = {
         "agent_id": "P2G-LONDON-EDGE-01", "tenant_id": "TEN-PRINT2GO", "location_id": "LOC-LONDON",
         "version": "0.3.0", "cloud_url": url, "enrollment_token": token,
         "heartbeat_seconds": 10, "poll_seconds": 5,
-        "fiery": {"server": "PX300", "host": "192.168.0.200", "imposition_template": "London BC"},
+        "fiery": {"server": "PX300", "host": "192.168.0.200", "imposition_template": "Jai BC"},
     }
     CONFIG_PATH.write_text(json.dumps(cfg, indent=2))
-    print("Saved config.json. (Fiery host stays local and is never sent to the cloud.)")
+    print("\nSaved. Connecting to Print2Go...\n")
     return cfg
 
 
@@ -77,6 +100,9 @@ def load_config():
         return first_run_setup()
     cfg = json.loads(CONFIG_PATH.read_text())
     if not cfg.get("cloud_url") or "example.com" in cfg.get("cloud_url", ""):
+        cfg["cloud_url"] = (os.environ.get("P2G_CLOUD_URL") or DEFAULT_CLOUD_URL).strip()
+    # Not paired yet (no code and no stored identity) -> run pairing.
+    if not cfg.get("enrollment_token") and not SECRETS_PATH.exists():
         return first_run_setup()
     return cfg
 
@@ -124,6 +150,33 @@ def save_executed(s):
     IDEMPOTENCY_PATH.write_text(json.dumps(sorted(s)))
 
 
+def register_autostart():
+    """Run automatically on Windows login (HKCU Run). Only for the packaged .exe."""
+    if os.name != "nt" or not getattr(sys, "frozen", False):
+        return
+    try:
+        import winreg
+        exe = sys.executable
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                            r"Software\Microsoft\Windows\CurrentVersion\Run",
+                            0, winreg.KEY_SET_VALUE) as key:
+            winreg.SetValueEx(key, "Print2GoConnector", 0, winreg.REG_SZ, f'"{exe}"')
+        log.info("Registered to start automatically on login.")
+    except Exception:
+        log.warning("Could not set auto-start (non-fatal).")
+
+
+def hide_console_if_paired():
+    """On the packaged .exe, when already paired, run hidden (no console flash on startup).
+    First-run stays visible so the operator can paste the pairing code."""
+    if os.name == "nt" and getattr(sys, "frozen", False) and SECRETS_PATH.exists():
+        try:
+            import ctypes
+            ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
+        except Exception:
+            pass
+
+
 class EdgeAgent:
     def __init__(self, config):
         self.cfg = config
@@ -161,26 +214,40 @@ class EdgeAgent:
             SECRET_TOKENS.update([self.secrets["signing_secret"], self.secrets.get("token", "")])
             log.info("Loaded existing registration for %s", self.agent_id)
             return
-        log.info("Registering %s with cloud...", self.agent_id)
-        r = requests.post(f"{self.base}/api/production/edge-v2/register", json={
-            "agent_id": self.agent_id, "tenant_id": self.tenant_id, "location_id": self.location_id,
-            "agent_kind": "REAL", "version": self.cfg.get("version", "0.3.0"),
-            "enrollment_token": self.cfg.get("enrollment_token", ""),
-            "capabilities": sorted(capabilities.ALLOWLISTED),
-        }, timeout=15)
-        r.raise_for_status()
-        data = r.json()
+        while True:
+            token = self.cfg.get("enrollment_token", "")
+            if not token:
+                self.cfg = first_run_setup()          # prompt for the pairing code
+                token = self.cfg.get("enrollment_token", "")
+            log.info("Pairing %s with cloud...", self.agent_id)
+            r = requests.post(f"{self.base}/api/production/edge-v2/register", json={
+                "agent_id": self.agent_id, "tenant_id": self.tenant_id, "location_id": self.location_id,
+                "agent_kind": "REAL", "version": self.cfg.get("version", "0.3.0"),
+                "enrollment_token": token,
+                "capabilities": sorted(capabilities.ALLOWLISTED),
+            }, timeout=15)
+            if r.status_code == 401:
+                print("\nThat pairing code was not accepted (it may already be used or expired).")
+                print("Get a fresh code from 'Connect my shop' on a Print2Go computer, then paste it here.\n")
+                self.cfg["enrollment_token"] = ""
+                CONFIG_PATH.write_text(json.dumps(self.cfg, indent=2))
+                continue
+            r.raise_for_status()
+            data = r.json()
+            break
         self.secrets = {"agent_id": self.agent_id, "token": data["token"], "signing_secret": data["signing_secret"]}
         save_secrets(self.secrets)
-        log.info("Registered. Secret stored in encrypted local store (never logged).")
-        print("\n=== EDGE AGENT REGISTERED ===")
+        # pairing code is single-use — clear it from disk once consumed
+        self.cfg["enrollment_token"] = ""
+        CONFIG_PATH.write_text(json.dumps(self.cfg, indent=2))
+        register_autostart()
+        log.info("Paired. Secret stored in encrypted local store (never logged).")
+        print("\n=== CONNECTED TO PRINT2GO ===")
         print(f"  Agent ID     : {self.agent_id}")
-        print(f"  Tenant       : {self.tenant_id}")
         print(f"  Location     : {self.location_id}")
         print(f"  Connection   : {self.base}")
-        print(f"  Capabilities : {', '.join(sorted(capabilities.ALLOWLISTED))}")
-        print(f"  Agent version: {self.cfg.get('version')}")
-        print("  Last heartbeat: (starting)\n")
+        print("  This computer will now stay connected and start automatically.")
+        print("  You can close this window.\n")
 
     # ---- heartbeat ----
     def heartbeat_loop(self):
@@ -278,4 +345,5 @@ class EdgeAgent:
 
 
 if __name__ == "__main__":
+    hide_console_if_paired()
     EdgeAgent(load_config()).run()

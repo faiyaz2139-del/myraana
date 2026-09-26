@@ -1,0 +1,53 @@
+name: Build Connector
+
+# Builds the standalone Windows Print2Go Connector (Print2GoConnector.exe) with
+# PyInstaller (one-file, no Python needed on branch PCs) and publishes it as a
+# Release asset. Point the backend's CONNECTOR_EXE_URL env at the published asset
+# so GET /api/production/edge-v2/connector/download serves it.
+
+on:
+  workflow_dispatch: {}
+  push:
+    paths:
+      - "edge_agent/agent.py"
+      - "edge_agent/capabilities.py"
+      - "edge_agent/discovery.py"
+      - ".github/workflows/build-connector.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build deps
+        run: python -m pip install --upgrade pip pyinstaller requests cryptography
+
+      - name: Build one-file EXE
+        working-directory: edge_agent
+        run: >
+          pyinstaller --onefile --console --name Print2GoConnector
+          --hidden-import capabilities --hidden-import discovery
+          agent.py
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Print2GoConnector
+          path: edge_agent/dist/Print2GoConnector.exe
+
+      - name: Publish/refresh release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: connector-latest
+          name: Print2Go Connector (latest)
+          files: edge_agent/dist/Print2GoConnector.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

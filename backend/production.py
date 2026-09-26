@@ -1400,33 +1400,22 @@ def build_router(db):
 
     @router.get("/edge-v2/connector/download")
     async def download_connector():
-        """Serve the ready-to-run Print2Go Connector ZIP for the Windows shop PC.
-        Bundles an embedded Python + offline wheels + agent source + one-click
-        installer, so branch staff just unzip and double-click. No Python or
-        build machine required on the shop PC."""
+        """Serve the standalone Windows Connector .exe (zero Python on branch PCs).
+        The binary is produced by the GitHub Actions build (.github/workflows/build-connector.yml)
+        and published as a Release asset; set CONNECTOR_EXE_URL to that asset's download URL.
+        As a fallback, a committed exe at edge_agent/dist/Print2GoConnector.exe is served."""
+        from fastapi.responses import RedirectResponse, FileResponse
+        exe_url = os.environ.get("CONNECTOR_EXE_URL", "").strip()
+        if exe_url:
+            return RedirectResponse(exe_url, status_code=302)
         edge_dir = Path(__file__).resolve().parent.parent / "edge_agent"
-        assets = edge_dir / "connector_assets"
-        tpl = assets / "template"
-        root = "Print2Go-Connector"
-        buf = io.BytesIO()
-        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-            # bundled runtime + offline components
-            z.write(assets / "python-embed-amd64.zip", f"{root}/python-embed-amd64.zip")
-            z.write(assets / "get-pip.py", f"{root}/get-pip.py")
-            for whl in sorted((assets / "wheels").glob("*.whl")):
-                z.write(whl, f"{root}/wheels/{whl.name}")
-            # one-click installer + launcher + config template + readme
-            for name in ("Install-Print2Go-Connector.bat", "start-hidden.vbs",
-                         "config.template.json", "README.txt"):
-                z.write(tpl / name, f"{root}/{name}")
-            # agent source (read-only connector)
-            for name in ("agent.py", "capabilities.py", "discovery.py",
-                         "diagnose.py", "requirements.txt"):
-                z.write(edge_dir / name, f"{root}/{name}")
-        buf.seek(0)
-        return Response(
-            content=buf.read(), media_type="application/zip",
-            headers={"Content-Disposition": 'attachment; filename="Print2Go-Connector.zip"'})
+        exe_path = edge_dir / "dist" / "Print2GoConnector.exe"
+        if exe_path.exists():
+            return FileResponse(str(exe_path), media_type="application/vnd.microsoft.portable-executable",
+                                filename="Print2GoConnector.exe")
+        raise HTTPException(503, "Connector build not published yet. Run the 'Build Connector' "
+                                 "GitHub Action, then set CONNECTOR_EXE_URL to the published "
+                                 "Print2GoConnector.exe release URL (or redeploy with the exe committed).")
 
     return router
 
