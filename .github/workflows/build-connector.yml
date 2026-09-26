@@ -52,11 +52,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Commit exe into the app (so /connector/download works after redeploy)
+      # NOTE: We intentionally do NOT commit the exe back to the repo — Emergent
+      # redeploys from the /app workspace, not from GitHub, so a committed exe would
+      # never reach the deployed backend. Use the Release asset URL below instead:
+      #   set backend secret CONNECTOR_EXE_URL =
+      #   https://github.com/<owner>/<repo>/releases/download/connector-latest/Print2GoConnector.exe
+      - name: Show the download URL to paste into CONNECTOR_EXE_URL
         shell: bash
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -f edge_agent/dist/Print2GoConnector.exe
-          git commit -m "chore: build Print2Go Connector exe [skip ci]" || { echo "No change to commit"; exit 0; }
-          git push
+          echo "CONNECTOR_EXE_URL = https://github.com/${GITHUB_REPOSITORY}/releases/download/connector-latest/Print2GoConnector.exe"

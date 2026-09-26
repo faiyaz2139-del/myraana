@@ -1413,9 +1413,12 @@ def build_router(db):
         if exe_path.exists():
             return FileResponse(str(exe_path), media_type="application/vnd.microsoft.portable-executable",
                                 filename="Print2GoConnector.exe")
-        raise HTTPException(503, "Connector build not published yet. Run the 'Build Connector' "
-                                 "GitHub Action, then set CONNECTOR_EXE_URL to the published "
-                                 "Print2GoConnector.exe release URL (or redeploy with the exe committed).")
+        raise HTTPException(503, "Connector not published yet. To publish the Windows app: "
+                                 "(1) Save to Github (chat input); (2) GitHub - Actions tab - 'Build Connector' - Run workflow; "
+                                 "(3) copy the published Release URL "
+                                 "https://github.com/<owner>/<repo>/releases/download/connector-latest/Print2GoConnector.exe ; "
+                                 "(4) in Emergent set backend secret CONNECTOR_EXE_URL to that URL (Manage Publishes - Secrets); "
+                                 "(5) Redeploy. The button will then download the .exe.")
 
     return router
 
