@@ -102,6 +102,13 @@ export default function Diagnostics() {
 
   const copyCode = () => { navigator.clipboard?.writeText(pairingCode); toast.success("Copied"); };
 
+  // Auto-refresh the pairing code every 3 minutes while waiting, so a stale code is never pasted.
+  useEffect(() => {
+    if (!pairingCode || online) return;
+    const id = setInterval(() => { getPairingCode(); }, 180000);
+    return () => clearInterval(id);
+  }, [pairingCode, online]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const exportReport = async () => {
     const { data } = await api.get(`/production/edge-v2/discovery/${AGENT_ID}/report`);
     const blob = new Blob([data.markdown], { type: "text/markdown" });
@@ -111,7 +118,8 @@ export default function Diagnostics() {
     toast.success("Report saved");
   };
 
-  const netState = f.PX300_REACHABLE === true ? "ok" : (running ? "checking" : "unknown");
+  const fieryReachable = agent?.fiery_reachable === true || f.PX300_REACHABLE === true;
+  const netState = fieryReachable ? "ok" : (running ? "checking" : "unknown");
 
   return (
     <div>
@@ -157,6 +165,12 @@ export default function Diagnostics() {
                         <code className="px-3 py-2 rounded-lg bg-slate-900 text-emerald-400 font-mono text-sm">{pairingCode}</code>
                         <Button variant="outline" size="sm" onClick={copyCode} className="gap-1.5"><Copy className="h-4 w-4" /> Copy</Button>
                         <span className="text-xs text-slate-400">Use within setup · single use</span>
+                      </div>
+                    )}
+                    {pairingCode && (
+                      <div className="mt-3 flex items-center gap-2 rounded-lg bg-blue-50 dark:bg-blue-950/30 px-3 py-2" data-testid="pairing-waiting">
+                        <Loader2 className="h-4 w-4 animate-spin text-blue-600 shrink-0" />
+                        <span className="text-xs text-blue-700 dark:text-blue-300">Waiting for your shop to connect… we'll turn green the moment it checks in. This code refreshes itself so it never goes stale.</span>
                       </div>
                     )}
                   </div>

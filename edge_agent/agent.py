@@ -251,11 +251,25 @@ class EdgeAgent:
 
     # ---- heartbeat ----
     def heartbeat_loop(self):
+        fiery_host = (self.cfg.get("fiery") or {}).get("host")
+        last_probe = 0.0
+        fiery_reachable = None
         while not self._stop.is_set():
             try:
-                r = self._signed("POST", "/api/production/edge-v2/heartbeat", {"state": "ONLINE"})
+                now = time.time()
+                if fiery_host and (now - last_probe > 60):
+                    try:
+                        res = capabilities.check_reachability(fiery_host, capabilities.FIERY_PROBE_PORTS)
+                        fiery_reachable = bool(res.get("reachable"))
+                    except Exception:
+                        fiery_reachable = None
+                    last_probe = now
+                caps = {}
+                if fiery_reachable is not None:
+                    caps["fiery_reachable"] = fiery_reachable  # boolean only — host/IP never sent to cloud
+                r = self._signed("POST", "/api/production/edge-v2/heartbeat", {"state": "ONLINE", "capabilities": caps})
                 if r.status_code == 200:
-                    log.info("Heartbeat ok (real_online=%s)", r.json().get("real_online"))
+                    log.info("Heartbeat ok (real_online=%s, printer_reachable=%s)", r.json().get("real_online"), fiery_reachable)
                 elif r.status_code == 401:
                     log.warning("Heartbeat unauthorized — re-registering.")
                     self.secrets = None
