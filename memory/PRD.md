@@ -219,3 +219,14 @@ Confirmed platform facts via Emergent Support: (a) the coding agent CANNOT trigg
 - **Cannot be done by the agent (only the user):** run the GitHub Action (needs GitHub UI) and set the production Secret. The endpoint + workflow + pairing agent are all ready; once the user publishes the exe and sets CONNECTOR_EXE_URL + redeploys, the "Download the Connector" button downloads Print2GoConnector.exe directly.
 - Alternative if the user prefers to avoid the env var: they download the built exe from the GitHub Release and attach it here; the agent places it at `edge_agent/dist/Print2GoConnector.exe` (endpoint already serves that) and they redeploy (workspace deploy includes it).
 
+## V1.9 — Diagnose "paired but not connecting"; self-diagnosing connector (2026-06)
+User reported: production connector prompts for the code, they paste it, but /diagnostics stays offline.
+- **PROVED the connector code is correct**: ran the REAL `edge_agent/agent.py` (not a simulation) against the live preview backend — it passed preflight, paired, printed CONNECTED, and heartbeats returned `real_online=True`; `GET /edge-v2/agents` showed `agent_kind=REAL, live_state=REAL_ONLINE, real_online=True`. This closes the earlier gap where only the signing was simulated. Agent `_sign` == backend `sign_request` exactly; timestamp window is 300s; token TTL 24h.
+- Therefore production failure is ENVIRONMENTAL on the shop PC, and the old connector **closed silently on error** so the operator saw nothing. Hardened `agent.py`:
+  - `preflight()` — checks it can reach myraana.com (outbound HTTPS) before pairing; prints a clear "could NOT reach" message + retries if blocked.
+  - `confirm_connection()` — sends one live signed heartbeat right after pairing; prints "[OK] CONNECTED … ONLINE" on success, or on 401 tells the operator the **PC DATE/TIME is likely wrong** (the #1 cause of paired-but-offline with signed check-ins).
+  - Clear stale/used pairing-code message (get a fresh code).
+  - `__main__` crash guard: prints the traceback and **"Press Enter to close"** so the window never vanishes silently.
+  - ASCII-only console output (avoids Windows cp1252 UnicodeEncodeError).
+- These changes are in the connector, so they take effect only after the exe is rebuilt: Save to Github → run "Build Connector" Action → set CONNECTOR_EXE_URL → redeploy → re-download → run. The new window then shows exactly why (firewall vs clock vs crash). Most likely shop-PC causes: outbound HTTPS to myraana.com blocked by firewall/proxy, or a wrong system clock.
+

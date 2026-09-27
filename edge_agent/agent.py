@@ -338,14 +338,54 @@ class EdgeAgent:
         self._signed("POST", f"/api/production/edge-v2/actions/{aid}/result",
                      {"ok": ok, "result": result, "evidence": evidence})
 
+    def preflight(self):
+        """Verify the shop PC can actually reach Print2Go before pairing."""
+        try:
+            requests.get(f"{self.base}/api/production/edge-v2/agents", timeout=15)
+            print(f"  [OK] Reached Print2Go at {self.base}")
+            return True
+        except requests.RequestException:
+            print(f"\n  [!] Could NOT reach {self.base}")
+            print("      This computer needs internet access to Print2Go (outbound HTTPS, port 443).")
+            print("      Check the internet/firewall/proxy. Retrying every 5 seconds...\n")
+            return False
+
+    def confirm_connection(self):
+        """One live signed heartbeat so the operator gets instant CONNECTED/why-not feedback."""
+        try:
+            r = self._signed("POST", "/api/production/edge-v2/heartbeat", {"state": "ONLINE", "capabilities": {}})
+            if r.status_code == 200 and r.json().get("real_online"):
+                print("\n  [OK] CONNECTED - your shop is now ONLINE in Print2Go.")
+                print("       You can close this window; it keeps running in the background.\n")
+            elif r.status_code == 401:
+                print("\n  [!] Connected to Print2Go but the first check-in was rejected (401).")
+                print("      Most common cause: this computer's DATE/TIME is wrong.")
+                print("      Fix the Windows clock (set time automatically), then restart the connector.\n")
+            else:
+                print(f"\n  [!] Registered, but the first check-in returned status {r.status_code}. Will keep retrying.\n")
+        except requests.RequestException:
+            print("\n  [!] Registered, but could not reach the cloud for the first check-in. Will keep retrying.\n")
+
     def run(self):
+        print(f"\nConnecting to: {self.base}")
+        while not self.preflight():
+            time.sleep(5)
         while True:
             try:
                 self.ensure_registered()
                 break
+            except requests.HTTPError as e:
+                code = getattr(getattr(e, "response", None), "status_code", "?")
+                print(f"\n  [!] Pairing failed (server said {code}).")
+                print("      If the code was already used or has expired, get a FRESH code from")
+                print("      'Connect my shop' and paste it again.\n")
+                self.cfg["enrollment_token"] = ""
+                CONFIG_PATH.write_text(json.dumps(self.cfg, indent=2))
+                time.sleep(1)
             except requests.RequestException:
-                log.warning("Cloud unavailable during registration — retrying in 5s.")
+                print("  Cloud unavailable during pairing - retrying in 5s.")
                 time.sleep(5)
+        self.confirm_connection()
         hb = threading.Thread(target=self.heartbeat_loop, daemon=True)
         pl = threading.Thread(target=self.poll_loop, daemon=True)
         hb.start(); pl.start()
@@ -358,6 +398,22 @@ class EdgeAgent:
             log.info("Shutting down.")
 
 
-if __name__ == "__main__":
+def _main():
     hide_console_if_paired()
     EdgeAgent(load_config()).run()
+
+
+if __name__ == "__main__":
+    try:
+        _main()
+    except SystemExit:
+        raise
+    except BaseException:
+        import traceback
+        print("\n============= Print2Go Connector - ERROR =============")
+        traceback.print_exc()
+        print("\nSomething went wrong above. Please send this message to Print2Go support.")
+        try:
+            input("\nPress Enter to close...")
+        except Exception:
+            pass
